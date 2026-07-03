@@ -65,9 +65,13 @@ independently of the four base roles:
 ### 4.2 Locations and objects
 
 - **Locations**: hierarchical directory (site → building → room, depth flexible).
-- **Objects** (assets/devices): belong to a location, have a type, a **serial
-  number** and inventory number as standard fields, plus custom fields
-  (same form-builder mechanism), e.g. model, warranty date.
+- **Object families** (device categories): a directory of device/asset types,
+  e.g. Printers, Network equipment, HVAC. Each family defines its own custom
+  field set via the form builder — e.g. MAC address and IP for network devices,
+  toner model for printers.
+- **Objects** (assets/devices): belong to a family and a location; **serial
+  number** and inventory number are standard fields, everything else comes from
+  the family's field schema (model, warranty date, MAC address, …).
 - **Service history per object**: automatically aggregates every ticket (with
   its billing records and costs) that references the object, plus **manual
   service log entries** (date, description, performed by, cost) for work done
@@ -80,6 +84,12 @@ independently of the four base roles:
 
 ### 4.3 Tickets and lifecycle
 
+- **Ticket ID**: the canonical number is `T-YYYY-NNNN` (global yearly
+  increment) — unique, stable and valid for every ticket, including ones with
+  no device attached. When a ticket references an object it additionally gets a
+  **device incident reference** `SSSS-NN`: the last 4 characters of the serial
+  number plus the per-device incident counter (e.g. `8123-04` = 4th incident on
+  device …8123). Both identifiers are displayed on the ticket and searchable.
 - Default statuses: `New → In Progress → Waiting for Requester / Waiting for Vendor
   → Resolved → Closed`, plus `Cancelled`. Status names/colors configurable by Admin.
 - Priorities: Low / Normal / High / Critical (configurable).
@@ -176,8 +186,8 @@ before the action, similar to Windows User Account Control:
   grants a short-lived elevation (~5 minutes) that unlocks the action.
 - **Signature**: billing approval additionally requires a handwritten signature
   drawn on a signature pad (touch or mouse). The signature image is stored with
-  the approval event and stamped onto the Service Document PDF. A user may
-  optionally save their signature in their profile for one-tap reuse.
+  the approval event and stamped onto the Service Document PDF. Signatures are
+  **never saved for reuse** — the manager draws a fresh one at every approval.
 - Every step-up confirmation is written to the timeline and the audit log.
 
 ### 4.8 Administration

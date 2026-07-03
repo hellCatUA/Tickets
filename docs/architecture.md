@@ -35,12 +35,14 @@ Group         (synced from Nextcloud) ↔ RoleMapping / Permission grants
 Category      (tree; agent groups, SLA targets, default priority)
 FormSchema    (versioned JSONB per category)
 Location      (tree)
-AssetObject   (belongs to Location; serial no, inventory no,
-               custom fields JSONB; QR token)
+ObjectFamily  (device category; per-family custom field schema)
+AssetObject   (belongs to ObjectFamily + Location; serial no, inventory no,
+               family fields JSONB; QR token; per-device incident counter)
 ServiceLogEntry (manual service-history entry on an AssetObject:
                date, description, performed by, cost USD)
-Ticket        (category, status, priority, requester, assignee/group,
-               location?, object?, form values JSONB)
+Ticket        (ticket no T-YYYY-NNNN; category, status, priority, requester,
+               assignee/group, location?, object? + device incident ref,
+               form values JSONB)
 TicketEvent   (append-only timeline: type, actor, payload, created_at)
 Comment       (public | internal), Attachment
 AutomationRule(condition JSONB, action JSONB, enabled)
@@ -191,8 +193,9 @@ Proxy host `tickets.417group.org` → `http://api:3000`:
    attachments, timeline, statuses, assignment, dark theme, responsive UI.
 3. **M2 — automation & notifications**: rules engine, SLA timers, in-app bell,
    Web Push, notification preferences.
-4. **M3 — locations & objects**: directories, custom fields, serial numbers,
-   QR codes, per-object service history and cost totals.
+4. **M3 — locations & objects**: directories, object families with per-family
+   field schemas, serial numbers, QR codes, per-object service history and
+   cost totals, device incident references on tickets.
 5. **M4 — billing**: vendors, billing records, step-up re-authorization,
    signature capture, approval flow, branding settings, Service Document PDF,
    CSV export.
