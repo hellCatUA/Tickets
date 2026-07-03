@@ -17,7 +17,9 @@ against Nextcloud accounts and groups.
 | Stack | NestJS (TypeScript) backend, Vue 3 frontend, PostgreSQL, Redis + BullMQ |
 | Authentication | Nextcloud **OIDC Identity Provider** app (SSO, groups in claims) + background user/group sync via OCS Provisioning API using a service account |
 | Attachments | Local Docker volume (independent from Nextcloud) |
-| Notifications | In-app bell + Web Push (PWA); configurable per user, per group, and per ticket participants |
+| Notifications | In-app bell + Web Push (PWA); configurable per user, per group, and per ticket participants. Email channel designed in but disabled until an SMTP server is available |
+| Billing currency | **USD only** (single-currency system) |
+| Step-up authorization | Sensitive approvals require password re-confirmation via Nextcloud (UAC-style); billing approval additionally requires a drawn signature |
 | Domains | Nextcloud: `cloud.417group.org` · Tickets: `tickets.417group.org` (same parent domain → iframe cookies work) |
 | Scale | ~25 users, ~50 tickets/month (design allows growth; no premature scaling work) |
 | UI language | English only |
@@ -63,8 +65,14 @@ independently of the four base roles:
 ### 4.2 Locations and objects
 
 - **Locations**: hierarchical directory (site → building → room, depth flexible).
-- **Objects** (assets): belong to a location, have a type and custom fields
-  (same form-builder mechanism), e.g. inventory number, model, warranty date.
+- **Objects** (assets/devices): belong to a location, have a type, a **serial
+  number** and inventory number as standard fields, plus custom fields
+  (same form-builder mechanism), e.g. model, warranty date.
+- **Service history per object**: automatically aggregates every ticket (with
+  its billing records and costs) that references the object, plus **manual
+  service log entries** (date, description, performed by, cost) for work done
+  outside the ticket flow. Per-object totals: number of services, total spend
+  (USD) — effectively cost-of-ownership tracking per device.
 - Both directories are maintained by groups holding the corresponding permission.
 - A ticket may reference a location and/or an object.
 - **QR codes**: each object/location gets a printable QR code; scanning it opens
@@ -98,6 +106,9 @@ independently of the four base roles:
 ### 4.5 Notifications
 
 - Channels: **in-app bell** (with unread counter) and **Web Push** (PWA).
+- **Email (SMTP)** is implemented behind the same channel abstraction but stays
+  disabled until a mail server is available — enabling it later is configuration
+  only (SMTP env vars), no code changes.
 - Routing: events notify ticket participants (requester, assignee, watchers),
   the responsible agent group, and managers on escalations.
 - Configurable at three levels:
@@ -113,15 +124,17 @@ internal document.
 **Vendor directory** (`manage:vendors`): company name, contact person, email/phone,
 address, payment/registration details, notes.
 
-**Billing record** attached to a ticket (`manage:billing`):
+**Billing record** attached to a ticket (`manage:billing`). A ticket may have
+**several billing records** — one per vendor engagement.
 
 - Vendor (from directory)
 - SOW — statement of work (rich text)
 - Result — outcome summary (rich text)
-- Price: amount + currency (default currency set in Admin settings), optional tax
+- Price in **USD**, optional tax
 - Vendor invoice upload (PDF or image)
 - Approving Manager (user with `approve:billing`); approval is an explicit action
-  in the system, recorded with a timestamp on the timeline
+  recorded with a timestamp on the timeline, and requires **step-up
+  re-authorization plus a drawn signature** (see 4.7)
 - Record status: `Draft → Pending Approval → Approved / Rejected`, optional
   `Paid` flag
 
@@ -135,8 +148,8 @@ document number (configurable prefix, e.g. `SD-2026-0001`):
   - Timeline (key events: created, assigned, work started, resolved, approved)
   - Result
   - SOW
-  - Price (with currency and optional tax breakdown)
-  - Approving Manager: name, approval date, signature line
+  - Price (USD, with optional tax breakdown)
+  - Approving Manager: name, approval date, and the **captured signature image**
 - **Page 2+ — the vendor's own invoice**, embedded from the uploaded file
   (PDF pages merged as-is; images placed one per page).
 
@@ -144,12 +157,30 @@ document number (configurable prefix, e.g. `SD-2026-0001`):
 
 - Per-record: the Service Document PDF (download / regenerate).
 - Period export: CSV of billing records (date, ticket, vendor, SOW summary,
-  price, currency, status, approver) for accounting.
+  price USD, status, approver) for accounting.
 
 **Branding settings** (Admin): company logo upload, company legal name, address,
-registration details, default currency, document number prefix.
+registration details, document number prefix.
 
-### 4.7 Administration
+### 4.7 Step-up authorization (UAC-style confirmation)
+
+Sensitive actions require the actor to re-confirm their identity immediately
+before the action, similar to Windows User Account Control:
+
+- **Actions covered** (Admin-configurable list): approving a billing record
+  (price/invoice), rejecting a billing record, closing a ticket.
+- **Mechanism**: because login is SSO, the platform never stores or sees
+  Nextcloud passwords. Re-confirmation is done by forcing a fresh OIDC
+  re-authentication (`prompt=login`, `max_age=0`) in a popup — Nextcloud itself
+  asks for the password (and 2FA, if the user has it). On success the platform
+  grants a short-lived elevation (~5 minutes) that unlocks the action.
+- **Signature**: billing approval additionally requires a handwritten signature
+  drawn on a signature pad (touch or mouse). The signature image is stored with
+  the approval event and stamped onto the Service Document PDF. A user may
+  optionally save their signature in their profile for one-tap reuse.
+- Every step-up confirmation is written to the timeline and the audit log.
+
+### 4.8 Administration
 
 - Settings area available to the Admin group: role mapping, categories & forms,
   statuses & priorities, automation rules, SLA targets, branding, vendors,
@@ -194,15 +225,11 @@ registration details, default currency, document number prefix.
 
 ## 8. Open questions
 
-1. **Default currency** for billing (per-record currency is selectable; which
-   default: EUR / USD / UAH?).
-2. **Multiple billing records per ticket** — assumed *allowed* (a ticket may
-   involve more than one vendor engagement). Confirm.
-3. **Tax handling** — assumed a single optional tax percentage/amount per record,
+1. **Tax handling** — assumed a single optional tax percentage/amount per record,
    no multi-rate breakdown. Confirm.
-4. Nextcloud version (must support the OIDC Identity Provider and External sites
+2. Nextcloud version (must support the OIDC Identity Provider and External sites
    apps) and whether apps can be installed from the App Store.
-5. DNS provider for the DNS-01 Let's Encrypt challenge in NPM (site is
-   Tailscale-only, so HTTP-01 will not work).
-6. OMV hardware: CPU architecture (x86/ARM) and RAM budget for the stack
-   (~1–1.5 GB recommended).
+3. Let's Encrypt on NPM is confirmed; verify which challenge type is in use —
+   if the site is reachable only over Tailscale, HTTP-01 cannot complete and a
+   DNS-01 challenge (DNS provider API credentials in NPM) is required.
+4. OMV CPU architecture (x86/ARM) — affects Docker base images.

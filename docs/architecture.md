@@ -11,7 +11,8 @@ Companion to [requirements.md](requirements.md).
 | Database | **PostgreSQL 16** | JSONB for form schemas & submitted values |
 | Queue / scheduler | **Redis 7 + BullMQ** | Automation rules, SLA timers, notifications, PDF jobs |
 | ORM | Prisma (or TypeORM) | Migrations checked into the repo |
-| PDF generation | Headless Chromium (HTML → PDF for page 1) + `pdf-lib` (merge uploaded vendor invoice) | |
+| PDF generation | Headless Chromium (HTML → PDF for page 1) + `pdf-lib` (merge uploaded vendor invoice, stamp approval signature) | |
+| Signature capture | `signature_pad` on a canvas (touch/mouse), stored as PNG | |
 | Auth | `openid-client` against Nextcloud OIDC; platform issues its own session cookie | `SameSite=Lax`, `Secure`, `HttpOnly` |
 
 ### Monorepo layout (pnpm workspaces)
@@ -34,15 +35,19 @@ Group         (synced from Nextcloud) ↔ RoleMapping / Permission grants
 Category      (tree; agent groups, SLA targets, default priority)
 FormSchema    (versioned JSONB per category)
 Location      (tree)
-AssetObject   (belongs to Location; custom fields JSONB; QR token)
+AssetObject   (belongs to Location; serial no, inventory no,
+               custom fields JSONB; QR token)
+ServiceLogEntry (manual service-history entry on an AssetObject:
+               date, description, performed by, cost USD)
 Ticket        (category, status, priority, requester, assignee/group,
                location?, object?, form values JSONB)
 TicketEvent   (append-only timeline: type, actor, payload, created_at)
 Comment       (public | internal), Attachment
 AutomationRule(condition JSONB, action JSONB, enabled)
 Vendor        (company details, payment details)
-BillingRecord (ticket, vendor, SOW, result, price, currency, tax?,
-               invoice file, approver, status, doc number)
+BillingRecord (ticket, vendor, SOW, result, price USD, tax?,
+               invoice file, approver, approval signature (PNG),
+               status, doc number; many per ticket)
 BrandingSettings, NotificationPreference, AuditLogEntry
 ```
 
@@ -70,6 +75,23 @@ Notes:
 
 Because `cloud.417group.org` and `tickets.417group.org` share the parent domain,
 the iframe is **same-site** and the session cookie works with `SameSite=Lax`.
+
+### Step-up re-authorization (UAC-style)
+
+For sensitive actions (billing approval/rejection, ticket closure) the API
+requires a fresh **elevated grant**:
+
+1. Frontend opens a popup to the OIDC authorize endpoint with
+   `prompt=login&max_age=0` — Nextcloud forces password entry (and 2FA if
+   enabled), regardless of the existing session.
+2. On callback the API verifies the new ID token's `auth_time`, then issues a
+   short-lived elevation (~5 min) bound to the session.
+3. The protected endpoint only executes while the elevation is valid; the
+   confirmation is recorded on the ticket timeline and in the audit log.
+
+The platform never sees the password — verification stays inside Nextcloud.
+Billing approval additionally submits a signature PNG captured with
+`signature_pad`; the worker stamps it into the Service Document PDF.
 
 ## 4. Containers (Docker Compose on OMV)
 
@@ -125,7 +147,8 @@ networks:
   container — one origin, no CORS.
 - No published ports: NPM reaches `api:3000` over the shared `npm` network.
 - Worker runs Chromium for PDF rendering → give it ~512 MB headroom.
-- Estimated footprint of the whole stack: **~1–1.5 GB RAM**, minimal CPU.
+- Footprint: **~700–900 MB RAM idle**, peaks to ~1.5 GB during PDF generation.
+  Recommended allocation on OMV: **2 GB** — never needs thought at this scale.
 
 ## 5. Nginx Proxy Manager
 
@@ -168,8 +191,10 @@ Proxy host `tickets.417group.org` → `http://api:3000`:
    attachments, timeline, statuses, assignment, dark theme, responsive UI.
 3. **M2 — automation & notifications**: rules engine, SLA timers, in-app bell,
    Web Push, notification preferences.
-4. **M3 — locations & objects**: directories, custom fields, QR codes.
-5. **M4 — billing**: vendors, billing records, approval flow, branding settings,
-   Service Document PDF, CSV export.
+4. **M3 — locations & objects**: directories, custom fields, serial numbers,
+   QR codes, per-object service history and cost totals.
+5. **M4 — billing**: vendors, billing records, step-up re-authorization,
+   signature capture, approval flow, branding settings, Service Document PDF,
+   CSV export.
 6. **M5 — polish**: reports dashboard, audit log, ticket templates, PWA
    install/offline shell, backup docs.
