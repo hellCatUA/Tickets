@@ -10,7 +10,7 @@ Companion to [requirements.md](requirements.md).
 | Frontend | **Vue 3** + Vite + Pinia + Vue Router | Built as PWA (service worker, manifest, Web Push) |
 | Database | **PostgreSQL 16** | JSONB for form schemas & submitted values |
 | Queue / scheduler | **Redis 7 + BullMQ** | Automation rules, SLA timers, notifications, PDF jobs |
-| ORM | Prisma (or TypeORM) | Migrations checked into the repo |
+| ORM | TypeORM | Entities + migrations checked into the repo |
 | PDF generation | Headless Chromium (HTML → PDF for page 1) + `pdf-lib` (merge uploaded vendor invoice, stamp approval signature) | |
 | Signature capture | `signature_pad` on a canvas (touch/mouse), stored as PNG | |
 | Auth | `openid-client` against Nextcloud OIDC; platform issues its own session cookie | `SameSite=Lax`, `Secure`, `HttpOnly` |
@@ -37,12 +37,11 @@ FormSchema    (versioned JSONB per category)
 Location      (tree)
 ObjectFamily  (device category; per-family custom field schema)
 AssetObject   (belongs to ObjectFamily + Location; serial no, inventory no,
-               family fields JSONB; QR token; per-device incident counter)
+               family fields JSONB; QR token)
 ServiceLogEntry (manual service-history entry on an AssetObject:
                date, description, performed by, cost USD)
 Ticket        (ticket no T-YYYY-NNNN; category, status, priority, requester,
-               assignee/group, location?, object? + device incident ref,
-               form values JSONB)
+               assignee/group, location?, object?, form values JSONB)
 TicketEvent   (append-only timeline: type, actor, payload, created_at)
 Comment       (public | internal), Attachment
 AutomationRule(condition JSONB, action JSONB, enabled)
@@ -195,7 +194,7 @@ Proxy host `tickets.417group.org` → `http://api:3000`:
    Web Push, notification preferences.
 4. **M3 — locations & objects**: directories, object families with per-family
    field schemas, serial numbers, QR codes, per-object service history and
-   cost totals, device incident references on tickets.
+   cost totals.
 5. **M4 — billing**: vendors, billing records, step-up re-authorization,
    signature capture, approval flow, branding settings, Service Document PDF,
    CSV export.

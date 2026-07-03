@@ -84,12 +84,10 @@ independently of the four base roles:
 
 ### 4.3 Tickets and lifecycle
 
-- **Ticket ID**: the canonical number is `T-YYYY-NNNN` (global yearly
-  increment) — unique, stable and valid for every ticket, including ones with
-  no device attached. When a ticket references an object it additionally gets a
-  **device incident reference** `SSSS-NN`: the last 4 characters of the serial
-  number plus the per-device incident counter (e.g. `8123-04` = 4th incident on
-  device …8123). Both identifiers are displayed on the ticket and searchable.
+- **Ticket ID**: `T-YYYY-NNNN` — a global increment that resets each year
+  (e.g. `T-2026-0042`); unique, stable, assigned to every ticket. Searching by
+  an object's serial number returns all tickets for that device, and the
+  incident count per device is visible in the object's service history.
 - Default statuses: `New → In Progress → Waiting for Requester / Waiting for Vendor
   → Resolved → Closed`, plus `Cancelled`. Status names/colors configurable by Admin.
 - Priorities: Low / Normal / High / Critical (configurable).
