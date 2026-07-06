@@ -110,11 +110,12 @@ services:
       NC_SERVICE_ACCOUNT: ${NC_SERVICE_ACCOUNT}      # OCS sync
       NC_SERVICE_APP_PASSWORD: ${NC_SERVICE_APP_PASSWORD}
       PUBLIC_URL: https://tickets.417group.org
+    ports: ['127.0.0.1:4090:3000']      # host-mode NPM proxies to localhost
     volumes:
       - attachments:/data/attachments   # ticket files + vendor invoices
       - branding:/data/branding         # logo etc.
     depends_on: [db, redis]
-    networks: [tickets, npm]            # 'npm' = NPM's docker network
+    networks: [tickets]
 
   worker:                               # same image, worker entrypoint
     build: { context: .., dockerfile: docker/api.Dockerfile }
@@ -139,21 +140,22 @@ services:
     networks: [tickets]
 
 volumes: { db-data: {}, redis-data: {}, attachments: {}, branding: {} }
-networks:
-  tickets: {}
-  npm: { external: true }
+networks: { tickets: {} }
 ```
 
 - The frontend is built at image build time and served statically by the API
   container — one origin, no CORS.
-- No published ports: NPM reaches `api:3000` over the shared `npm` network.
+- The API binds to `127.0.0.1:4090` on the host: NPM runs in host network
+  mode on this server, so it proxies to localhost (same pattern as
+  Nextcloud's `127.0.0.1:4080`). Nothing is reachable from outside the host.
 - Worker runs Chromium for PDF rendering → give it ~512 MB headroom.
 - Footprint: **~700–900 MB RAM idle**, peaks to ~1.5 GB during PDF generation.
   Recommended allocation on OMV: **2 GB** — never needs thought at this scale.
 
 ## 5. Nginx Proxy Manager
 
-Proxy host `tickets.417group.org` → `http://api:3000`:
+Proxy host `tickets.417group.org` → `http://127.0.0.1:4090`
+(full walkthrough: [deployment.md](deployment.md)):
 
 - **WebSocket support: on** (Socket.IO).
 - Custom response headers:

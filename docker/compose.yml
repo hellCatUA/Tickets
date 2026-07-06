@@ -10,6 +10,15 @@ services:
     environment:
       DATABASE_URL: postgresql://tickets:${DB_PASSWORD}@db:5432/tickets
       REDIS_URL: redis://redis:6379
+      TZ: ${TZ:-UTC}
+    # NPM runs in host network mode on this host, so it reaches the API via
+    # 127.0.0.1 — same pattern as Nextcloud's 127.0.0.1:4080 binding.
+    ports:
+      - '127.0.0.1:4090:3000'
+    # If cloud.417group.org does not resolve from inside the container,
+    # uncomment and point it at the host's Tailscale IP:
+    # extra_hosts:
+    #   - 'cloud.417group.org:100.x.y.z'
     volumes:
       - attachments:/data/attachments
       - branding:/data/branding
@@ -18,7 +27,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
-    networks: [tickets, npm]
+    networks: [tickets]
 
   worker:
     build:
@@ -30,6 +39,7 @@ services:
     environment:
       DATABASE_URL: postgresql://tickets:${DB_PASSWORD}@db:5432/tickets
       REDIS_URL: redis://redis:6379
+      TZ: ${TZ:-UTC}
     volumes:
       - attachments:/data/attachments
       - branding:/data/branding
@@ -72,7 +82,3 @@ volumes:
 
 networks:
   tickets: {}
-  # Shared network with Nginx Proxy Manager so NPM can reach `api:3000`
-  # without publishing ports. Create it once: docker network create npm
-  npm:
-    external: true

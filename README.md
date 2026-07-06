@@ -3,7 +3,8 @@
 Internal service-ticket platform integrated with Nextcloud, self-hosted via Docker Compose.
 
 - **Requirements:** [docs/requirements.md](docs/requirements.md)
-- **Architecture & deployment:** [docs/architecture.md](docs/architecture.md)
+- **Architecture:** [docs/architecture.md](docs/architecture.md)
+- **Deployment guide:** [docs/deployment.md](docs/deployment.md)
 
 | | |
 |---|---|
@@ -21,7 +22,7 @@ Internal service-ticket platform integrated with Nextcloud, self-hosted via Dock
 apps/api        NestJS backend (REST API, OIDC auth, OCS directory sync)
 apps/web        Vue 3 SPA (PWA, light/dark theme, embedded mode for Nextcloud)
 packages/shared Shared TypeScript types (roles, permissions, DTOs)
-docker/         Dockerfile, compose stack, NPM + Nextcloud setup notes
+docker/         Dockerfile and compose stack
 docs/           Requirements and architecture
 ```
 
@@ -38,10 +39,9 @@ pnpm dev:web                # Vite on :5173, proxies /api and /auth to :3000
 
 ```bash
 cp .env.example .env        # fill in secrets
-docker network create npm   # once, shared with Nginx Proxy Manager
 docker compose -f docker/compose.yml up -d --build
 ```
 
-Then follow [docker/npm-notes.md](docker/npm-notes.md) for the NPM proxy host
-and the one-time Nextcloud setup (OIDC client, External sites entry, service
-account, `tickets-admins` group).
+Full walkthrough — NPM proxy host, certificates, one-time Nextcloud setup
+(OIDC client, External sites entry, service account, `tickets-admins` group),
+verification and backups: **[docs/deployment.md](docs/deployment.md)**.
