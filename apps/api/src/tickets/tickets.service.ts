@@ -11,7 +11,11 @@ import {
   AttachmentDto,
   CommentDto,
   CreateTicketDto,
+  DashboardAlertDto,
+  DashboardDto,
   formatTicketNumber,
+  FormField,
+  FormValues,
   MeDto,
   Role,
   TicketDetailDto,
@@ -23,14 +27,24 @@ import {
   UserRefDto,
   validateFormValues,
 } from '@tickets/shared';
-import { Brackets, DataSource, Repository } from 'typeorm';
+import { Brackets, DataSource, In, Repository, SelectQueryBuilder } from 'typeorm';
 import { CategoriesService } from '../categories/categories.service';
 import { Attachment } from '../entities/attachment.entity';
+import { Category } from '../entities/category.entity';
 import { Comment } from '../entities/comment.entity';
 import { Ticket } from '../entities/ticket.entity';
 import { TicketEvent } from '../entities/ticket-event.entity';
 import { User } from '../entities/user.entity';
 import { TicketsGateway } from './tickets.gateway';
+
+const OPEN_STATUSES: TicketStatus[] = [
+  TicketStatus.New,
+  TicketStatus.InProgress,
+  TicketStatus.WaitingForRequester,
+  TicketStatus.WaitingForVendor,
+];
+
+const STALE_AFTER_DAYS = 7;
 
 export interface ListFilters {
   status?: TicketStatus;
@@ -99,7 +113,50 @@ export class TicketsService {
     return ticket;
   }
 
+  /** Fresh query builder limited to what this user may see. */
+  private async scopedQb(me: MeDto): Promise<SelectQueryBuilder<Ticket>> {
+    const qb = this.tickets.createQueryBuilder('t');
+    if (!this.isManager(me)) {
+      const cats = await this.agentCategoryIds(me);
+      qb.andWhere(
+        new Brackets((w) => {
+          w.where('t.requesterId = :uid', { uid: me.id }).orWhere('t.assigneeId = :uid');
+          if (cats.length > 0) w.orWhere('t.categoryId IN (:...cats)', { cats });
+        }),
+      );
+    }
+    return qb;
+  }
+
   // ---------- commands ----------
+
+  /**
+   * Priority precedence: form-value rules (first match) → requester's choice
+   * (only when the category allows it) → the category default.
+   */
+  private resolvePriority(
+    category: Category,
+    fields: FormField[],
+    dto: CreateTicketDto,
+    formValues: FormValues,
+  ): TicketPriority {
+    for (const rule of category.priorityRules ?? []) {
+      if (!fields.some((f) => f.key === rule.field)) continue;
+      const value = formValues[rule.field];
+      const matches = Array.isArray(value)
+        ? value.map(String).includes(String(rule.equals))
+        : String(value) === String(rule.equals);
+      if (matches) return rule.priority;
+    }
+    if (
+      category.allowRequesterPriority &&
+      dto.priority &&
+      Object.values(TicketPriority).includes(dto.priority)
+    ) {
+      return dto.priority;
+    }
+    return category.defaultPriority;
+  }
 
   async create(me: MeDto, dto: CreateTicketDto): Promise<TicketDetailDto> {
     if (!dto.title?.trim()) throw new BadRequestException('Title is required');
@@ -108,6 +165,7 @@ export class TicketsService {
     const formValues = dto.formValues ?? {};
     const errors = validateFormValues(schema.fields, formValues);
     if (errors.length > 0) throw new BadRequestException(errors.join('; '));
+    const priority = this.resolvePriority(category, schema.fields, dto, formValues);
 
     const ticket = await this.dataSource.transaction(async (em) => {
       const year = new Date().getFullYear();
@@ -127,7 +185,7 @@ export class TicketsService {
           title: dto.title.trim(),
           description: dto.description ?? '',
           status: TicketStatus.New,
-          priority: dto.priority ?? category.defaultPriority,
+          priority,
           requesterId: me.id,
           formValues,
         }),
@@ -150,21 +208,11 @@ export class TicketsService {
     const page = Math.max(1, filters.page ?? 1);
     const pageSize = Math.min(100, Math.max(1, filters.pageSize ?? 25));
 
-    const qb = this.tickets
-      .createQueryBuilder('t')
+    const qb = (await this.scopedQb(me))
       .leftJoinAndSelect('t.requester', 'requester')
       .leftJoinAndSelect('t.assignee', 'assignee')
       .leftJoinAndSelect('t.category', 'category');
 
-    if (!this.isManager(me)) {
-      const cats = await this.agentCategoryIds(me);
-      qb.andWhere(
-        new Brackets((w) => {
-          w.where('t.requesterId = :uid', { uid: me.id }).orWhere('t.assigneeId = :uid');
-          if (cats.length > 0) w.orWhere('t.categoryId IN (:...cats)', { cats });
-        }),
-      );
-    }
     if (filters.status) qb.andWhere('t.status = :status', { status: filters.status });
     if (filters.categoryId) qb.andWhere('t.categoryId = :cat', { cat: filters.categoryId });
     if (filters.assigneeId) qb.andWhere('t.assigneeId = :assignee', { assignee: filters.assigneeId });
@@ -177,6 +225,73 @@ export class TicketsService {
       .take(pageSize);
     const [rows, total] = await qb.getManyAndCount();
     return { items: rows.map((t) => this.toSummary(t)), total, page, pageSize };
+  }
+
+  async dashboard(me: MeDto): Promise<DashboardDto> {
+    const staff = this.isManager(me) || (await this.agentCategoryIds(me)).length > 0;
+
+    const statusRows = await (await this.scopedQb(me))
+      .select('t.status', 'status')
+      .addSelect('COUNT(*)', 'count')
+      .andWhere('t.status IN (:...open)', { open: OPEN_STATUSES })
+      .groupBy('t.status')
+      .getRawMany<{ status: TicketStatus; count: string }>();
+    const openByStatus: Partial<Record<TicketStatus, number>> = {};
+    let openTotal = 0;
+    for (const row of statusRows) {
+      openByStatus[row.status] = Number(row.count);
+      openTotal += Number(row.count);
+    }
+
+    const [myAssignedOpen, myRequestedOpen, waitingOnYou] = await Promise.all([
+      this.tickets.count({ where: { assigneeId: me.id, status: In(OPEN_STATUSES) } }),
+      this.tickets.count({ where: { requesterId: me.id, status: In(OPEN_STATUSES) } }),
+      this.tickets.count({
+        where: { requesterId: me.id, status: TicketStatus.WaitingForRequester },
+      }),
+    ]);
+
+    const alerts: DashboardAlertDto[] = [];
+    if (staff) {
+      const staleCut = new Date(Date.now() - STALE_AFTER_DAYS * 24 * 60 * 60 * 1000);
+      const [unassigned, criticalOpen, stale] = await Promise.all([
+        (await this.scopedQb(me))
+          .andWhere('t.assigneeId IS NULL')
+          .andWhere('t.status IN (:...open)', { open: OPEN_STATUSES })
+          .getCount(),
+        (await this.scopedQb(me))
+          .andWhere('t.priority = :p', { p: TicketPriority.Critical })
+          .andWhere('t.status IN (:...open)', { open: OPEN_STATUSES })
+          .getCount(),
+        (await this.scopedQb(me))
+          .andWhere('t.status IN (:...open)', { open: OPEN_STATUSES })
+          .andWhere('t.updatedAt < :cut', { cut: staleCut })
+          .getCount(),
+      ]);
+      if (criticalOpen > 0) alerts.push({ kind: 'critical_open', count: criticalOpen });
+      if (unassigned > 0) alerts.push({ kind: 'unassigned', count: unassigned });
+      if (stale > 0) alerts.push({ kind: 'stale', count: stale });
+    }
+    if (waitingOnYou > 0) alerts.push({ kind: 'waiting_on_you', count: waitingOnYou });
+
+    const recent = await (await this.scopedQb(me))
+      .leftJoinAndSelect('t.requester', 'requester')
+      .leftJoinAndSelect('t.assignee', 'assignee')
+      .leftJoinAndSelect('t.category', 'category')
+      .andWhere('t.status IN (:...open)', { open: OPEN_STATUSES })
+      .orderBy('t.updatedAt', 'DESC')
+      .take(6)
+      .getMany();
+
+    return {
+      staff,
+      openTotal,
+      openByStatus,
+      myAssignedOpen,
+      myRequestedOpen,
+      alerts,
+      recent: recent.map((t) => this.toSummary(t)),
+    };
   }
 
   async getDetail(me: MeDto, id: string): Promise<TicketDetailDto> {

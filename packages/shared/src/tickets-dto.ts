@@ -6,18 +6,28 @@ export interface UserRefDto {
   displayName: string;
 }
 
+/** "If form field <field> equals <equals> → set <priority>". First match wins. */
+export interface PriorityRule {
+  field: string;
+  equals: string | number | boolean;
+  priority: TicketPriority;
+}
+
 export interface CategoryDto {
   id: string;
   name: string;
   description: string;
   parentId: string | null;
   defaultPriority: TicketPriority;
+  /** When false (default), requesters cannot pick a priority — rules/default apply. */
+  allowRequesterPriority: boolean;
   active: boolean;
   formFields: FormField[];
 }
 
 export interface CategoryAdminDto extends CategoryDto {
   agentGroups: string[];
+  priorityRules: PriorityRule[];
   formVersion: number;
   sortOrder: number;
 }
@@ -28,6 +38,8 @@ export interface CreateCategoryDto {
   parentId?: string | null;
   agentGroups?: string[];
   defaultPriority?: TicketPriority;
+  allowRequesterPriority?: boolean;
+  priorityRules?: PriorityRule[];
 }
 
 export interface CreateTicketDto {
@@ -82,6 +94,23 @@ export interface AttachmentDto {
   size: number;
   uploader: UserRefDto;
   createdAt: string;
+}
+
+export interface DashboardAlertDto {
+  kind: 'unassigned' | 'critical_open' | 'stale' | 'waiting_on_you';
+  count: number;
+}
+
+export interface DashboardDto {
+  /** Viewer works tickets (manager or agent of at least one category). */
+  staff: boolean;
+  openTotal: number;
+  openByStatus: Partial<Record<TicketStatus, number>>;
+  myAssignedOpen: number;
+  myRequestedOpen: number;
+  alerts: DashboardAlertDto[];
+  /** Most recently updated open tickets in the viewer's scope. */
+  recent: TicketSummaryDto[];
 }
 
 export interface TicketDetailDto extends TicketSummaryDto {

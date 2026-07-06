@@ -5,6 +5,7 @@ import type {
   CommentDto,
   CreateCategoryDto,
   CreateTicketDto,
+  DashboardDto,
   FormField,
   GroupDto,
   TicketDetailDto,
@@ -81,6 +82,10 @@ export const TicketsApi = {
 
 export const UsersApi = {
   list: () => api<UserRefDto[]>('/api/users'),
+};
+
+export const DashboardApi = {
+  get: () => api<DashboardDto>('/api/dashboard'),
 };
 
 export const AdminApi = {

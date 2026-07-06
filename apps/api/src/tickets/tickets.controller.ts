@@ -17,6 +17,7 @@ import {
   AttachmentDto,
   CommentDto,
   CreateTicketDto,
+  DashboardDto,
   MeDto,
   TicketDetailDto,
   TicketListDto,
@@ -138,6 +139,20 @@ export class TicketsController {
       mimeType: file.mimetype || 'application/octet-stream',
       size: file.size,
     });
+  }
+}
+
+@Controller('api/dashboard')
+export class DashboardController {
+  constructor(
+    private readonly tickets: TicketsService,
+    private readonly access: AccessService,
+  ) {}
+
+  @Get()
+  async get(@Req() req: Request): Promise<DashboardDto> {
+    const me = await this.access.getMe(req.session.userId as string);
+    return this.tickets.dashboard(me);
   }
 }
 

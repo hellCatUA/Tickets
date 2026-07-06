@@ -3,6 +3,7 @@ import {
   CategoryAdminDto,
   FormField,
   GroupDto,
+  PriorityRule,
   TICKET_PRIORITY_LABELS,
   TicketPriority,
 } from '@tickets/shared';
@@ -23,8 +24,25 @@ const description = ref('');
 const parentId = ref<string | null>(null);
 const agentGroups = ref<string[]>([]);
 const defaultPriority = ref<TicketPriority>(TicketPriority.Normal);
+const allowRequesterPriority = ref(false);
+const priorityRules = ref<PriorityRule[]>([]);
 const active = ref(true);
 const fields = ref<FormField[]>([]);
+
+/** Fields with a key — candidates for priority rules. */
+const ruleFields = computed(() => fields.value.filter((f) => f.key));
+
+function addRule(): void {
+  priorityRules.value.push({
+    field: ruleFields.value[0]?.key ?? '',
+    equals: '',
+    priority: TicketPriority.High,
+  });
+}
+
+function removeRule(index: number): void {
+  priorityRules.value.splice(index, 1);
+}
 
 const selected = computed(() => categories.value.find((c) => c.id === selectedId.value) ?? null);
 
@@ -56,6 +74,8 @@ function select(category: CategoryAdminDto | null): void {
   parentId.value = category?.parentId ?? null;
   agentGroups.value = [...(category?.agentGroups ?? [])];
   defaultPriority.value = category?.defaultPriority ?? TicketPriority.Normal;
+  allowRequesterPriority.value = category?.allowRequesterPriority ?? false;
+  priorityRules.value = JSON.parse(JSON.stringify(category?.priorityRules ?? [])) as PriorityRule[];
   active.value = category?.active ?? true;
   fields.value = JSON.parse(JSON.stringify(category?.formFields ?? [])) as FormField[];
 }
@@ -90,6 +110,8 @@ async function saveCategory(): Promise<void> {
       parentId: parentId.value,
       agentGroups: agentGroups.value,
       defaultPriority: defaultPriority.value,
+      allowRequesterPriority: allowRequesterPriority.value,
+      priorityRules: priorityRules.value,
       active: active.value,
     };
     if (isNew.value) {
@@ -197,6 +219,52 @@ async function saveForm(): Promise<void> {
               </label>
             </div>
           </div>
+
+          <div class="priority-block">
+            <label class="check">
+              <input v-model="allowRequesterPriority" type="checkbox" />
+              Requester can choose the priority
+            </label>
+            <div>
+              <label class="mini">
+                Priority rules — first match wins and overrides any choice
+              </label>
+              <p v-if="priorityRules.length === 0" class="muted rules-hint">
+                No rules. Tickets get the default priority
+                {{ allowRequesterPriority ? 'unless the requester picks one' : '' }}.
+              </p>
+              <div v-for="(rule, i) in priorityRules" :key="i" class="rule">
+                <span class="muted">if</span>
+                <select v-model="rule.field">
+                  <option v-for="f in ruleFields" :key="f.key" :value="f.key">
+                    {{ f.label || f.key }}
+                  </option>
+                </select>
+                <span class="muted">=</span>
+                <input v-model="rule.equals" type="text" placeholder="value" />
+                <span class="muted">→</span>
+                <select v-model="rule.priority">
+                  <option
+                    v-for="(l, value) in TICKET_PRIORITY_LABELS"
+                    :key="value"
+                    :value="value"
+                  >
+                    {{ l }}
+                  </option>
+                </select>
+                <button class="btn icon" type="button" title="Remove rule" @click="removeRule(i)">
+                  ✕
+                </button>
+              </div>
+              <button class="btn" type="button" :disabled="ruleFields.length === 0" @click="addRule">
+                + Add rule
+              </button>
+              <p v-if="ruleFields.length === 0" class="muted rules-hint">
+                Add form fields below first — rules react to their values.
+              </p>
+            </div>
+          </div>
+
           <div class="actions">
             <button class="btn btn-primary" type="button" @click="saveCategory">
               {{ isNew ? 'Create category' : 'Save category' }}
@@ -347,6 +415,38 @@ async function saveForm(): Promise<void> {
 .notice {
   color: #2ea05a;
   font-size: 0.9rem;
+}
+
+.priority-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+}
+
+.rule {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.rule select,
+.rule input {
+  width: auto;
+  min-width: 120px;
+  flex: 1;
+}
+
+.icon {
+  padding: 0.35rem 0.55rem;
+}
+
+.rules-hint {
+  margin: 0.2rem 0 0.4rem;
+  font-size: 0.85rem;
 }
 
 .empty {

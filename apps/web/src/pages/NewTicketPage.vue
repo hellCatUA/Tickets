@@ -63,7 +63,9 @@ async function submit(): Promise<void> {
       categoryId: categoryId.value,
       title: title.value,
       description: description.value,
-      priority: priority.value,
+      // Sent only when the category allows requesters to choose; the server
+      // enforces this and applies priority rules regardless.
+      priority: category.value?.allowRequesterPriority ? priority.value : undefined,
       formValues: formValues.value,
     });
     await router.push(`/tickets/${ticket.id}`);
@@ -98,7 +100,7 @@ async function submit(): Promise<void> {
         <textarea v-model="description" rows="4" placeholder="Describe the issue or request…" />
       </div>
 
-      <div class="field">
+      <div v-if="category?.allowRequesterPriority" class="field">
         <label class="field-label">Priority</label>
         <select v-model="priority">
           <option v-for="(label, value) in TICKET_PRIORITY_LABELS" :key="value" :value="value">

@@ -5,6 +5,7 @@ import {
   CategoryDto,
   CreateCategoryDto,
   FormField,
+  PriorityRule,
   TicketPriority,
   validateFormFields,
 } from '@tickets/shared';
@@ -61,6 +62,20 @@ export class CategoriesService {
     return new Map(rows.map((r) => [r.id, r]));
   }
 
+  /** Keeps only well-formed rules and coerces `equals` to a primitive. */
+  private sanitizeRules(rules: PriorityRule[] | undefined): PriorityRule[] {
+    if (!Array.isArray(rules)) return [];
+    return rules
+      .filter(
+        (r) =>
+          r &&
+          typeof r.field === 'string' &&
+          r.field.trim() !== '' &&
+          Object.values(TicketPriority).includes(r.priority),
+      )
+      .map((r) => ({ field: r.field.trim(), equals: String(r.equals ?? ''), priority: r.priority }));
+  }
+
   async create(dto: CreateCategoryDto): Promise<CategoryAdminDto> {
     if (!dto.name?.trim()) throw new BadRequestException('Name is required');
     if (dto.parentId) await this.requireCategory(dto.parentId);
@@ -71,6 +86,8 @@ export class CategoriesService {
         parentId: dto.parentId ?? null,
         agentGroups: dto.agentGroups ?? [],
         defaultPriority: dto.defaultPriority ?? TicketPriority.Normal,
+        allowRequesterPriority: dto.allowRequesterPriority ?? false,
+        priorityRules: this.sanitizeRules(dto.priorityRules),
         formVersion: 1,
       }),
     );
@@ -91,6 +108,12 @@ export class CategoriesService {
     if (patch.parentId !== undefined) category.parentId = patch.parentId;
     if (patch.agentGroups !== undefined) category.agentGroups = patch.agentGroups;
     if (patch.defaultPriority !== undefined) category.defaultPriority = patch.defaultPriority;
+    if (patch.allowRequesterPriority !== undefined) {
+      category.allowRequesterPriority = patch.allowRequesterPriority;
+    }
+    if (patch.priorityRules !== undefined) {
+      category.priorityRules = this.sanitizeRules(patch.priorityRules);
+    }
     if (patch.active !== undefined) category.active = patch.active;
     if (patch.sortOrder !== undefined) category.sortOrder = patch.sortOrder;
     const saved = await this.categories.save(category);
@@ -134,6 +157,7 @@ export class CategoriesService {
       description: c.description,
       parentId: c.parentId,
       defaultPriority: c.defaultPriority,
+      allowRequesterPriority: c.allowRequesterPriority,
       active: c.active,
       formFields: fields,
     };
@@ -143,6 +167,7 @@ export class CategoriesService {
     return {
       ...this.toDto(c, fields),
       agentGroups: c.agentGroups,
+      priorityRules: c.priorityRules,
       formVersion: c.formVersion,
       sortOrder: c.sortOrder,
     };

@@ -1,4 +1,4 @@
-import { TicketPriority } from '@tickets/shared';
+import { PriorityRule, TicketPriority } from '@tickets/shared';
 import {
   Column,
   CreateDateColumn,
@@ -27,6 +27,14 @@ export class Category {
 
   @Column({ type: 'varchar', default: TicketPriority.Normal })
   defaultPriority: TicketPriority;
+
+  /** Requesters may pick a priority only when explicitly enabled. */
+  @Column({ default: false })
+  allowRequesterPriority: boolean;
+
+  /** Form-value driven priority rules; first match wins over any choice. */
+  @Column({ type: 'jsonb', default: () => "'[]'" })
+  priorityRules: PriorityRule[];
 
   @Column({ default: true })
   active: boolean;

@@ -6,20 +6,22 @@ import {
   TicketStatus,
 } from '@tickets/shared';
 import { onMounted, ref, watch } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import PriorityBadge from '../components/PriorityBadge.vue';
 import StatusBadge from '../components/StatusBadge.vue';
 import { CategoriesApi, TicketsApi } from '../lib/api';
 
 const router = useRouter();
+const route = useRoute();
 
 const list = ref<TicketListDto | null>(null);
 const categories = ref<CategoryDto[]>([]);
 const loading = ref(false);
 
-const status = ref<TicketStatus | ''>('');
-const categoryId = ref('');
-const q = ref('');
+// Deep-linkable filters (e.g. /tickets?status=new from dashboard alerts)
+const status = ref<TicketStatus | ''>((route.query.status as TicketStatus) ?? '');
+const categoryId = ref((route.query.categoryId as string) ?? '');
+const q = ref((route.query.q as string) ?? '');
 const page = ref(1);
 
 async function load(): Promise<void> {

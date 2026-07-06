@@ -7,7 +7,7 @@ import { Ticket } from '../entities/ticket.entity';
 import { TicketCounter } from '../entities/ticket-counter.entity';
 import { TicketEvent } from '../entities/ticket-event.entity';
 import { User } from '../entities/user.entity';
-import { AttachmentsController, TicketsController } from './tickets.controller';
+import { AttachmentsController, DashboardController, TicketsController } from './tickets.controller';
 import { TicketsGateway } from './tickets.gateway';
 import { TicketsService } from './tickets.service';
 
@@ -16,7 +16,7 @@ import { TicketsService } from './tickets.service';
     TypeOrmModule.forFeature([Ticket, TicketEvent, Comment, Attachment, TicketCounter, User]),
     CategoriesModule,
   ],
-  controllers: [TicketsController, AttachmentsController],
+  controllers: [TicketsController, DashboardController, AttachmentsController],
   providers: [TicketsService, TicketsGateway],
   exports: [TicketsService],
 })
