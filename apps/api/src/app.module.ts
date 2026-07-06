@@ -11,6 +11,8 @@ import { RolesGuard } from './access/roles.guard';
 import { AdminModule } from './admin/admin.module';
 import { AuthModule } from './auth/auth.module';
 import { BrandingModule } from './branding/branding.module';
+import { CategoriesModule } from './categories/categories.module';
+import { TicketsModule } from './tickets/tickets.module';
 import { HealthController } from './health/health.controller';
 import { NextcloudModule } from './nextcloud/nextcloud.module';
 import { UsersModule } from './users/users.module';
@@ -47,6 +49,8 @@ const publicDir = join(__dirname, '..', 'public');
     UsersModule,
     NextcloudModule,
     AdminModule,
+    CategoriesModule,
+    TicketsModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: RolesGuard }],

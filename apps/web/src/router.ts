@@ -1,3 +1,4 @@
+import { Role } from '@tickets/shared';
 import { createRouter, createWebHistory } from 'vue-router';
 import { useAuthStore } from './stores/auth';
 
@@ -6,6 +7,22 @@ export const router = createRouter({
   routes: [
     { path: '/', name: 'dashboard', component: () => import('./pages/DashboardPage.vue') },
     { path: '/tickets', name: 'tickets', component: () => import('./pages/TicketsPage.vue') },
+    {
+      path: '/tickets/new',
+      name: 'new-ticket',
+      component: () => import('./pages/NewTicketPage.vue'),
+    },
+    {
+      path: '/tickets/:id',
+      name: 'ticket-detail',
+      component: () => import('./pages/TicketDetailPage.vue'),
+    },
+    {
+      path: '/admin/categories',
+      name: 'admin-categories',
+      component: () => import('./pages/AdminCategoriesPage.vue'),
+      meta: { role: Role.Admin },
+    },
     {
       path: '/login',
       name: 'login',
@@ -31,5 +48,6 @@ router.beforeEach(async (to) => {
       query: to.fullPath !== '/' ? { returnTo: to.fullPath } : {},
     };
   }
+  if (to.meta.role && !auth.roles.includes(to.meta.role as Role)) return { path: '/' };
   return true;
 });

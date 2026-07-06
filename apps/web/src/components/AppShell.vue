@@ -1,10 +1,16 @@
 <script setup lang="ts">
+import { Role } from '@tickets/shared';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { useRoute } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 import { useUiStore } from '../stores/ui';
 
 const auth = useAuthStore();
 const ui = useUiStore();
+const route = useRoute();
+
+const isAdmin = computed(() => auth.roles.includes(Role.Admin));
+const isTicketsSection = computed(() => String(route.path).startsWith('/tickets'));
 
 const menuOpen = ref(false);
 const menuRef = ref<HTMLElement | null>(null);
@@ -71,7 +77,14 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick));
     <div class="body">
       <nav class="sidenav">
         <router-link to="/">Dashboard</router-link>
-        <router-link to="/tickets">Tickets</router-link>
+        <router-link to="/tickets" :class="{ 'router-link-active': isTicketsSection }">
+          Tickets
+        </router-link>
+        <router-link to="/tickets/new" class="new-ticket">+ New ticket</router-link>
+        <template v-if="isAdmin">
+          <span class="nav-section">Admin</span>
+          <router-link to="/admin/categories">Categories</router-link>
+        </template>
         <template v-if="ui.embedded">
           <button class="btn theme-mini" type="button" @click="ui.cycleTheme()">
             Theme: {{ themeLabel }}
@@ -242,6 +255,25 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick));
   background: var(--surface-2);
   color: var(--accent);
   font-weight: 600;
+}
+
+.new-ticket {
+  color: var(--accent);
+}
+
+.nav-section {
+  margin-top: 0.75rem;
+  padding: 0 0.75rem;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+@media (max-width: 720px) {
+  .nav-section {
+    display: none;
+  }
 }
 
 .theme-mini {

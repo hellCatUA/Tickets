@@ -1,0 +1,409 @@
+import {
+  BadRequestException,
+  ForbiddenException,
+  forwardRef,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import {
+  AttachmentDto,
+  CommentDto,
+  CreateTicketDto,
+  formatTicketNumber,
+  MeDto,
+  Role,
+  TicketDetailDto,
+  TicketEventDto,
+  TicketListDto,
+  TicketPriority,
+  TicketStatus,
+  TicketSummaryDto,
+  UserRefDto,
+  validateFormValues,
+} from '@tickets/shared';
+import { Brackets, DataSource, Repository } from 'typeorm';
+import { CategoriesService } from '../categories/categories.service';
+import { Attachment } from '../entities/attachment.entity';
+import { Comment } from '../entities/comment.entity';
+import { Ticket } from '../entities/ticket.entity';
+import { TicketEvent } from '../entities/ticket-event.entity';
+import { User } from '../entities/user.entity';
+import { TicketsGateway } from './tickets.gateway';
+
+export interface ListFilters {
+  status?: TicketStatus;
+  categoryId?: string;
+  assigneeId?: string;
+  q?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+const OPEN_TRANSITION_TIMESTAMPS: Partial<Record<TicketStatus, 'resolvedAt' | 'closedAt'>> = {
+  [TicketStatus.Resolved]: 'resolvedAt',
+  [TicketStatus.Closed]: 'closedAt',
+};
+
+@Injectable()
+export class TicketsService {
+  constructor(
+    @InjectRepository(Ticket) private readonly tickets: Repository<Ticket>,
+    @InjectRepository(TicketEvent) private readonly events: Repository<TicketEvent>,
+    @InjectRepository(Comment) private readonly comments: Repository<Comment>,
+    @InjectRepository(Attachment) private readonly attachments: Repository<Attachment>,
+    @InjectRepository(User) private readonly users: Repository<User>,
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly categories: CategoriesService,
+    @Inject(forwardRef(() => TicketsGateway)) private readonly gateway: TicketsGateway,
+  ) {}
+
+  // ---------- access helpers ----------
+
+  private isManager(me: MeDto): boolean {
+    return me.roles.includes(Role.Manager);
+  }
+
+  private isAgent(me: MeDto): boolean {
+    return me.roles.includes(Role.Agent);
+  }
+
+  /** Categories this user's groups are assigned to as agents. */
+  private async agentCategoryIds(me: MeDto): Promise<string[]> {
+    if (!this.isAgent(me) || me.groups.length === 0) return [];
+    const rows: Array<{ id: string }> = await this.dataSource.query(
+      'SELECT id FROM categories WHERE "agentGroups" ?| $1',
+      [me.groups],
+    );
+    return rows.map((r) => r.id);
+  }
+
+  private async isStaffFor(me: MeDto, ticket: Ticket): Promise<boolean> {
+    if (this.isManager(me)) return true;
+    if (!this.isAgent(me)) return false;
+    const cats = await this.agentCategoryIds(me);
+    return cats.includes(ticket.categoryId) || ticket.assigneeId === me.id;
+  }
+
+  private async canView(me: MeDto, ticket: Ticket): Promise<boolean> {
+    if (ticket.requesterId === me.id) return true;
+    return this.isStaffFor(me, ticket);
+  }
+
+  async assertCanView(me: MeDto, ticketId: string): Promise<Ticket> {
+    const ticket = await this.tickets.findOne({ where: { id: ticketId } });
+    if (!ticket || !(await this.canView(me, ticket))) {
+      throw new NotFoundException('Ticket not found');
+    }
+    return ticket;
+  }
+
+  // ---------- commands ----------
+
+  async create(me: MeDto, dto: CreateTicketDto): Promise<TicketDetailDto> {
+    if (!dto.title?.trim()) throw new BadRequestException('Title is required');
+    const { category, schema } = await this.categories.getCategoryWithSchema(dto.categoryId);
+    if (!category.active) throw new BadRequestException('Category is not active');
+    const formValues = dto.formValues ?? {};
+    const errors = validateFormValues(schema.fields, formValues);
+    if (errors.length > 0) throw new BadRequestException(errors.join('; '));
+
+    const ticket = await this.dataSource.transaction(async (em) => {
+      const year = new Date().getFullYear();
+      const [counter]: Array<{ seq: number }> = await em.query(
+        `INSERT INTO ticket_counters(year, seq) VALUES ($1, 1)
+         ON CONFLICT (year) DO UPDATE SET seq = ticket_counters.seq + 1
+         RETURNING seq`,
+        [year],
+      );
+      const created = await em.save(
+        em.create(Ticket, {
+          ticketNo: formatTicketNumber(year, counter.seq),
+          year,
+          seq: counter.seq,
+          categoryId: category.id,
+          formSchemaId: schema.id,
+          title: dto.title.trim(),
+          description: dto.description ?? '',
+          status: TicketStatus.New,
+          priority: dto.priority ?? category.defaultPriority,
+          requesterId: me.id,
+          formValues,
+        }),
+      );
+      await em.save(
+        em.create(TicketEvent, {
+          ticketId: created.id,
+          type: 'created',
+          actorId: me.id,
+          payload: { ticketNo: created.ticketNo },
+        }),
+      );
+      return created;
+    });
+
+    return this.getDetail(me, ticket.id);
+  }
+
+  async list(me: MeDto, filters: ListFilters): Promise<TicketListDto> {
+    const page = Math.max(1, filters.page ?? 1);
+    const pageSize = Math.min(100, Math.max(1, filters.pageSize ?? 25));
+
+    const qb = this.tickets
+      .createQueryBuilder('t')
+      .leftJoinAndSelect('t.requester', 'requester')
+      .leftJoinAndSelect('t.assignee', 'assignee')
+      .leftJoinAndSelect('t.category', 'category');
+
+    if (!this.isManager(me)) {
+      const cats = await this.agentCategoryIds(me);
+      qb.andWhere(
+        new Brackets((w) => {
+          w.where('t.requesterId = :uid', { uid: me.id }).orWhere('t.assigneeId = :uid');
+          if (cats.length > 0) w.orWhere('t.categoryId IN (:...cats)', { cats });
+        }),
+      );
+    }
+    if (filters.status) qb.andWhere('t.status = :status', { status: filters.status });
+    if (filters.categoryId) qb.andWhere('t.categoryId = :cat', { cat: filters.categoryId });
+    if (filters.assigneeId) qb.andWhere('t.assigneeId = :assignee', { assignee: filters.assigneeId });
+    if (filters.q?.trim()) {
+      qb.andWhere('(t.title ILIKE :q OR t.ticketNo ILIKE :q)', { q: `%${filters.q.trim()}%` });
+    }
+
+    qb.orderBy('t.updatedAt', 'DESC')
+      .skip((page - 1) * pageSize)
+      .take(pageSize);
+    const [rows, total] = await qb.getManyAndCount();
+    return { items: rows.map((t) => this.toSummary(t)), total, page, pageSize };
+  }
+
+  async getDetail(me: MeDto, id: string): Promise<TicketDetailDto> {
+    const ticket = await this.tickets.findOne({
+      where: { id },
+      relations: { requester: true, assignee: true, category: true },
+    });
+    if (!ticket || !(await this.canView(me, ticket))) {
+      throw new NotFoundException('Ticket not found');
+    }
+    const staff = await this.isStaffFor(me, ticket);
+
+    const [schemaMap, events, comments, attachments] = await Promise.all([
+      this.categories.getSchemasByIds([ticket.formSchemaId]),
+      this.events.find({
+        where: { ticketId: id },
+        relations: { actor: true },
+        order: { createdAt: 'ASC' },
+      }),
+      this.comments.find({
+        where: { ticketId: id },
+        relations: { author: true },
+        order: { createdAt: 'ASC' },
+      }),
+      this.attachments.find({
+        where: { ticketId: id },
+        relations: { uploader: true },
+        order: { createdAt: 'ASC' },
+      }),
+    ]);
+
+    const visibleComments = comments.filter((c) => staff || !c.internal);
+    const internalCommentIds = new Set(comments.filter((c) => c.internal).map((c) => c.id));
+    const visibleEvents = events.filter(
+      (e) =>
+        staff ||
+        !(e.type === 'comment_added' && internalCommentIds.has(e.payload.commentId as string)),
+    );
+
+    return {
+      ...this.toSummary(ticket),
+      description: ticket.description,
+      formFields: schemaMap.get(ticket.formSchemaId)?.fields ?? [],
+      formValues: ticket.formValues,
+      events: visibleEvents.map((e) => this.toEventDto(e)),
+      comments: visibleComments.map((c) => this.toCommentDto(c)),
+      attachments: attachments.map((a) => this.toAttachmentDto(a)),
+      canManage: staff,
+      canComment: true,
+      canInternal: staff,
+      canCancel:
+        ticket.requesterId === me.id &&
+        ![TicketStatus.Closed, TicketStatus.Cancelled].includes(ticket.status),
+    };
+  }
+
+  async changeStatus(me: MeDto, id: string, status: TicketStatus): Promise<TicketDetailDto> {
+    if (!Object.values(TicketStatus).includes(status)) {
+      throw new BadRequestException('Unknown status');
+    }
+    const ticket = await this.assertCanView(me, id);
+    const staff = await this.isStaffFor(me, ticket);
+    const requesterCancel =
+      ticket.requesterId === me.id && status === TicketStatus.Cancelled && !staff;
+    if (!staff && !requesterCancel) throw new ForbiddenException('Not allowed to change status');
+    if (ticket.status === status) return this.getDetail(me, id);
+
+    const from = ticket.status;
+    ticket.status = status;
+    const stampField = OPEN_TRANSITION_TIMESTAMPS[status];
+    if (stampField) ticket[stampField] = new Date();
+    await this.tickets.save(ticket);
+    await this.addEvent(ticket.id, 'status_changed', me.id, { from, to: status });
+    return this.getDetail(me, id);
+  }
+
+  async assign(me: MeDto, id: string, assigneeId: string | null): Promise<TicketDetailDto> {
+    const ticket = await this.assertCanView(me, id);
+    const staff = await this.isStaffFor(me, ticket);
+    if (!staff) throw new ForbiddenException('Not allowed to assign');
+    // Agents may only take tickets themselves; managers assign anyone.
+    if (!this.isManager(me) && assigneeId !== me.id && assigneeId !== null) {
+      throw new ForbiddenException('Agents can only assign tickets to themselves');
+    }
+    let assignee: User | null = null;
+    if (assigneeId) {
+      assignee = await this.users.findOne({ where: { id: assigneeId, active: true } });
+      if (!assignee) throw new BadRequestException('Assignee not found');
+    }
+    if (ticket.assigneeId === assigneeId) return this.getDetail(me, id);
+    ticket.assigneeId = assigneeId;
+    await this.tickets.save(ticket);
+    await this.addEvent(ticket.id, 'assigned', me.id, {
+      assigneeId,
+      assigneeName: assignee?.displayName ?? null,
+    });
+    return this.getDetail(me, id);
+  }
+
+  async setPriority(me: MeDto, id: string, priority: TicketPriority): Promise<TicketDetailDto> {
+    if (!Object.values(TicketPriority).includes(priority)) {
+      throw new BadRequestException('Unknown priority');
+    }
+    const ticket = await this.assertCanView(me, id);
+    if (!(await this.isStaffFor(me, ticket))) {
+      throw new ForbiddenException('Not allowed to change priority');
+    }
+    if (ticket.priority === priority) return this.getDetail(me, id);
+    const from = ticket.priority;
+    ticket.priority = priority;
+    await this.tickets.save(ticket);
+    await this.addEvent(ticket.id, 'priority_changed', me.id, { from, to: priority });
+    return this.getDetail(me, id);
+  }
+
+  async addComment(me: MeDto, id: string, body: string, internal: boolean): Promise<CommentDto> {
+    if (!body?.trim()) throw new BadRequestException('Comment cannot be empty');
+    const ticket = await this.assertCanView(me, id);
+    if (internal && !(await this.isStaffFor(me, ticket))) {
+      throw new ForbiddenException('Internal notes are staff-only');
+    }
+    const comment = await this.comments.save(
+      this.comments.create({ ticketId: id, authorId: me.id, body: body.trim(), internal }),
+    );
+    comment.author = (await this.users.findOneBy({ id: me.id }))!;
+    // Requester replies while waiting flip the ticket back to In Progress.
+    if (
+      !internal &&
+      ticket.requesterId === me.id &&
+      ticket.status === TicketStatus.WaitingForRequester
+    ) {
+      ticket.status = TicketStatus.InProgress;
+      await this.tickets.save(ticket);
+      await this.addEvent(id, 'status_changed', me.id, {
+        from: TicketStatus.WaitingForRequester,
+        to: TicketStatus.InProgress,
+        auto: true,
+      });
+    }
+    await this.addEvent(id, 'comment_added', me.id, { commentId: comment.id, internal });
+    return this.toCommentDto(comment);
+  }
+
+  async registerAttachment(
+    me: MeDto,
+    ticketId: string,
+    meta: { filename: string; storedName: string; mimeType: string; size: number },
+  ): Promise<AttachmentDto> {
+    await this.assertCanView(me, ticketId);
+    const attachment = await this.attachments.save(
+      this.attachments.create({ ticketId, uploaderId: me.id, ...meta }),
+    );
+    attachment.uploader = (await this.users.findOneBy({ id: me.id }))!;
+    await this.addEvent(ticketId, 'attachment_added', me.id, {
+      attachmentId: attachment.id,
+      filename: meta.filename,
+    });
+    return this.toAttachmentDto(attachment);
+  }
+
+  async getAttachmentForDownload(me: MeDto, attachmentId: string): Promise<Attachment> {
+    const attachment = await this.attachments.findOne({ where: { id: attachmentId } });
+    if (!attachment) throw new NotFoundException('Attachment not found');
+    await this.assertCanView(me, attachment.ticketId);
+    return attachment;
+  }
+
+  private async addEvent(
+    ticketId: string,
+    type: string,
+    actorId: string | null,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    await this.events.save(this.events.create({ ticketId, type, actorId, payload }));
+    this.gateway.emitTicketUpdate(ticketId, { type });
+  }
+
+  // ---------- mapping ----------
+
+  private toUserRef(user: User | null | undefined): UserRefDto | null {
+    return user ? { id: user.id, displayName: user.displayName } : null;
+  }
+
+  private toSummary(t: Ticket): TicketSummaryDto {
+    return {
+      id: t.id,
+      ticketNo: t.ticketNo,
+      title: t.title,
+      status: t.status,
+      priority: t.priority,
+      categoryId: t.categoryId,
+      categoryName: t.category?.name ?? '',
+      requester: this.toUserRef(t.requester) ?? { id: t.requesterId, displayName: '?' },
+      assignee: this.toUserRef(t.assignee),
+      createdAt: t.createdAt.toISOString(),
+      updatedAt: t.updatedAt.toISOString(),
+    };
+  }
+
+  private toEventDto(e: TicketEvent): TicketEventDto {
+    return {
+      id: e.id,
+      type: e.type,
+      actor: this.toUserRef(e.actor),
+      payload: e.payload,
+      createdAt: e.createdAt.toISOString(),
+    };
+  }
+
+  private toCommentDto(c: Comment): CommentDto {
+    return {
+      id: c.id,
+      author: this.toUserRef(c.author) ?? { id: c.authorId, displayName: '?' },
+      body: c.body,
+      internal: c.internal,
+      createdAt: c.createdAt.toISOString(),
+    };
+  }
+
+  private toAttachmentDto(a: Attachment): AttachmentDto {
+    return {
+      id: a.id,
+      filename: a.filename,
+      mimeType: a.mimeType,
+      size: a.size,
+      uploader: this.toUserRef(a.uploader) ?? { id: a.uploaderId, displayName: '?' },
+      createdAt: a.createdAt.toISOString(),
+    };
+  }
+}

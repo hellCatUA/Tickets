@@ -15,10 +15,12 @@ const auth = useAuthStore();
     </section>
 
     <section class="card">
-      <h3>Platform status</h3>
-      <p class="muted">
-        Milestone M0: SSO, directory sync and role mapping are live. Ticket management arrives in
-        M1.
+      <h3>Quick actions</h3>
+      <p>
+        <router-link class="btn btn-primary" to="/tickets/new">+ New ticket</router-link>
+      </p>
+      <p>
+        <router-link class="btn" to="/tickets">Browse tickets</router-link>
       </p>
     </section>
   </div>
