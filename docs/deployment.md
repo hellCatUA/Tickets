@@ -77,8 +77,8 @@ leave them as-is.
 
 ```bash
 cd /docker/apps/tickets
-docker compose -f docker/compose.yml up -d --build
-docker compose -f docker/compose.yml ps          # api, worker, db, redis running
+docker compose up -d --build
+docker compose ps          # api, worker, db, redis running
 curl -s http://127.0.0.1:4090/healthz            # → {"status":"ok","db":true}
 ```
 
@@ -106,7 +106,7 @@ curl -s http://127.0.0.1:4090/healthz            # → {"status":"ok","db":true}
    - Optionally restrict visibility to specific groups
 6. Restart the tickets stack so it picks up the finished `.env`:
    ```bash
-   docker compose -f docker/compose.yml up -d
+   docker compose up -d
    ```
 
 ## Step 5 — NPM proxy host
@@ -161,7 +161,7 @@ client_max_body_size 25m;
 ```bash
 cd /docker/apps/tickets
 git pull
-docker compose -f docker/compose.yml up -d --build
+docker compose up -d --build
 ```
 
 Schema changes are applied automatically in M0 (TypeORM `synchronize`);
@@ -171,7 +171,7 @@ from the first tagged release migrations run explicitly instead.
 
 ```bash
 # nightly DB dump (add to cron / scheduled task on OMV)
-docker compose -f /docker/apps/tickets/docker/compose.yml \
+docker compose --project-directory /docker/apps/tickets \
   exec -T db pg_dump -U tickets tickets | gzip \
   > /tank/backups/tickets/tickets-$(date +%F).sql.gz
 ```
@@ -185,6 +185,19 @@ Redis holds only sessions and (from M2) queue state — no backup needed.
 
 ## Troubleshooting
 
+**`WARN The "DB_PASSWORD" variable is not set` / `dependency failed to start:
+container tickets-db-1 is unhealthy`** — Compose did not find the `.env` with
+your variables. Compose reads `.env` for `${…}` substitution from the
+directory of `compose.yml` — which is why `compose.yml` lives at the repo
+root, right next to `.env`. Run `docker compose` commands from
+`/docker/apps/tickets` and make sure `.env` exists there (`cp .env.example
+.env` + fill it in). Since the guard `${DB_PASSWORD:?…}` was added, a missing
+variable aborts immediately with a clear message instead of starting Postgres
+with an empty password. A first start that failed this way leaves no data
+behind — after fixing `.env`, plain `docker compose up -d --build` recovers;
+if the `db` container still restarts, reset the empty volume once with
+`docker compose down -v` (safe only while there is no data yet).
+
 **502 from NPM** — the API container is down or the port binding is missing:
 `docker compose ps`, `curl http://127.0.0.1:4090/healthz`,
 `docker compose logs api`.
@@ -194,12 +207,12 @@ API cannot reach `https://cloud.417group.org` (OIDC discovery). Test from
 inside the container:
 
 ```bash
-docker compose -f docker/compose.yml exec api \
+docker compose exec api \
   wget -qO- https://cloud.417group.org/.well-known/openid-configuration | head -c 200
 ```
 
 If DNS does not resolve there, uncomment `extra_hosts` in
-`docker/compose.yml` and set the host's Tailscale IP; if TLS fails, the
+`compose.yml` and set the host's Tailscale IP; if TLS fails, the
 certificate on `cloud.417group.org` must be valid (it already is if browsers
 accept it).
 

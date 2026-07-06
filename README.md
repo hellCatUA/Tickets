@@ -39,7 +39,7 @@ pnpm dev:web                # Vite on :5173, proxies /api and /auth to :3000
 
 ```bash
 cp .env.example .env        # fill in secrets
-docker compose -f docker/compose.yml up -d --build
+docker compose up -d --build
 ```
 
 Full walkthrough — NPM proxy host, certificates, one-time Nextcloud setup

@@ -3,12 +3,12 @@ name: tickets
 services:
   api:
     build:
-      context: ..
+      context: .
       dockerfile: docker/api.Dockerfile
     restart: unless-stopped
-    env_file: [../.env]
+    env_file: [.env]
     environment:
-      DATABASE_URL: postgresql://tickets:${DB_PASSWORD}@db:5432/tickets
+      DATABASE_URL: postgresql://tickets:${DB_PASSWORD:?set it in .env next to compose.yml}@db:5432/tickets
       REDIS_URL: redis://redis:6379
       TZ: ${TZ:-UTC}
     # NPM runs in host network mode on this host, so it reaches the API via
@@ -31,13 +31,13 @@ services:
 
   worker:
     build:
-      context: ..
+      context: .
       dockerfile: docker/api.Dockerfile
     command: ['node', 'dist/worker.js']
     restart: unless-stopped
-    env_file: [../.env]
+    env_file: [.env]
     environment:
-      DATABASE_URL: postgresql://tickets:${DB_PASSWORD}@db:5432/tickets
+      DATABASE_URL: postgresql://tickets:${DB_PASSWORD:?set it in .env next to compose.yml}@db:5432/tickets
       REDIS_URL: redis://redis:6379
       TZ: ${TZ:-UTC}
     volumes:
@@ -56,7 +56,7 @@ services:
     environment:
       POSTGRES_DB: tickets
       POSTGRES_USER: tickets
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set it in .env next to compose.yml}
     volumes:
       - db-data:/var/lib/postgresql/data
     healthcheck:

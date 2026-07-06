@@ -97,7 +97,7 @@ Billing approval additionally submits a signature PNG captured with
 ## 4. Containers (Docker Compose on OMV)
 
 ```yaml
-# docker/compose.yml — shape, not final
+# compose.yml — shape, not final
 services:
   api:
     build: { context: .., dockerfile: docker/api.Dockerfile }
