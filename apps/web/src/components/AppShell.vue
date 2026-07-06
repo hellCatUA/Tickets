@@ -9,12 +9,17 @@ const ui = useUiStore();
 const themeLabel = computed(
   () => ({ auto: 'Auto', light: 'Light', dark: 'Dark' })[ui.theme],
 );
+
+function hideLogo(event: Event): void {
+  (event.target as HTMLImageElement).style.display = 'none';
+}
 </script>
 
 <template>
   <div class="shell" :class="{ embedded: ui.embedded }">
     <!-- Inside Nextcloud the host provides global chrome, so the top bar hides. -->
     <header v-if="!ui.embedded" class="topbar">
+      <img class="brand-logo" :src="'/api/branding/logo'" alt="" @error="hideLogo" />
       <span class="brand">417 Tickets</span>
       <span class="spacer" />
       <button class="btn" type="button" @click="ui.cycleTheme()">Theme: {{ themeLabel }}</button>
@@ -57,6 +62,12 @@ const themeLabel = computed(
 
 .brand {
   font-weight: 700;
+}
+
+.brand-logo {
+  height: 26px;
+  max-width: 120px;
+  object-fit: contain;
 }
 
 .spacer {

@@ -2,9 +2,13 @@ import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Request } from 'express';
 import type { Session, SessionData } from 'express-session';
-import { Client, generators, IdTokenClaims, Issuer, IssuerMetadata } from 'openid-client';
+import { Client, custom, generators, IdTokenClaims, Issuer, IssuerMetadata } from 'openid-client';
 
 type AppSession = Session & Partial<SessionData>;
+
+// The default 3.5s HTTP timeout is too tight for a cold Nextcloud PHP
+// process on the same host — first token exchanges were timing out.
+custom.setHttpOptionsDefaults({ timeout: 15_000 });
 
 @Injectable()
 export class OidcService {

@@ -20,6 +20,11 @@ router.beforeEach(async (to) => {
   const auth = useAuthStore();
   if (!auth.loaded) await auth.fetchMe();
   if (to.meta.public) return true;
-  if (!auth.isAuthenticated) return { name: 'login', query: { returnTo: to.fullPath } };
+  if (!auth.isAuthenticated) {
+    // Straight to Nextcloud SSO — no intermediate button page. If the OIDC
+    // flow fails, the callback lands on /login?error=oidc, which breaks the loop.
+    auth.login(to.fullPath);
+    return false;
+  }
   return true;
 });

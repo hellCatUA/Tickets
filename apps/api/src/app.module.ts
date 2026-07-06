@@ -10,6 +10,7 @@ import { AccessModule } from './access/access.module';
 import { RolesGuard } from './access/roles.guard';
 import { AdminModule } from './admin/admin.module';
 import { AuthModule } from './auth/auth.module';
+import { BrandingModule } from './branding/branding.module';
 import { HealthController } from './health/health.controller';
 import { NextcloudModule } from './nextcloud/nextcloud.module';
 import { UsersModule } from './users/users.module';
@@ -42,6 +43,7 @@ const publicDir = join(__dirname, '..', 'public');
       : []),
     AccessModule,
     AuthModule,
+    BrandingModule,
     UsersModule,
     NextcloudModule,
     AdminModule,
