@@ -104,11 +104,12 @@ curl -s http://127.0.0.1:4090/healthz            # → {"status":"ok","db":true}
      names (`occ config:app:set oidc group_claim_type --value displayname`)
      would you need to switch it back to `gid`.
 3. **Service account for directory sync**:
-   - Create user `svc-tickets` (no admin rights needed to read users/groups on
-     current NC releases; if the sync later returns 403, add it to the `admin`
-     group or grant it user-management rights)
+   - Create user `svc-tickets` and **add it to the `admin` group** — the OCS
+     Provisioning API only lets admins (or group subadmins) list users and
+     groups; without this the sync fails with HTTP 403
    - Log in as `svc-tickets` → Settings → Security → Devices & sessions →
-     create an **app password** → put into `.env`
+     create an **app password** → put into `.env` (paste it exactly as shown,
+     dashes included, no surrounding quotes needed)
 4. **Admin group**: create group `tickets-admins`, add yourself. Members get
    the platform Admin role even before any role mapping exists.
 5. **External sites entry** (Settings → Administration → External sites):
@@ -268,9 +269,19 @@ Hard-refresh Nextcloud after changing NPM headers.
 certificate must be trusted by the browser (Nextcloud refuses to embed sites
 with cert errors).
 
-**Directory sync logs HTTP 401/403** — the app password is wrong, or
-`svc-tickets` lacks permission to list users; regenerate the app password or
-grant the account user-management rights (see Step 4.3).
+**Directory sync fails ("Sync now" shows an error)** — the message now
+carries Nextcloud's own reason:
+
+- `HTTP 401` — wrong service account name or app password in `.env`
+  (regenerate the app password and restart the stack);
+- `HTTP 403` / "must be an admin" — `svc-tickets` is not in the `admin`
+  group (see Step 4.3);
+- network/DNS errors — same fix as the OIDC discovery case above.
+
+New Nextcloud groups appear in Admin → Access after the next sync (every
+`SYNC_CRON` tick, or press **Sync now**) — or immediately after any member
+of that group signs in. `docker compose logs api | grep -i sync` shows the
+scheduled runs.
 
 **Wrong client IP in logs** — with host-mode NPM the API receives requests
 from 127.0.0.1 and honours `X-Forwarded-For` (`trust proxy` is enabled),

@@ -1,4 +1,12 @@
-import { BadRequestException, Body, Controller, Get, Post, Put } from '@nestjs/common';
+import {
+  BadGatewayException,
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Post,
+  Put,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
   GroupDto,
@@ -87,8 +95,13 @@ export class AdminController {
   }
 
   @Post('sync')
-  runSync(): Promise<SyncResultDto> {
-    return this.sync.run();
+  async runSync(): Promise<SyncResultDto> {
+    try {
+      return await this.sync.run();
+    } catch (err) {
+      // Pass the real reason (403 from OCS, DNS failure, …) to the admin UI.
+      throw new BadGatewayException(`Directory sync failed: ${(err as Error).message}`);
+    }
   }
 
   @Get('sync')

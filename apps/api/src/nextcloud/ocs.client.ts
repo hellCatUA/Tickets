@@ -42,10 +42,20 @@ export class OcsClient {
         Accept: 'application/json',
       },
     });
+    const text = await res.text();
     if (!res.ok) {
-      throw new Error(`OCS request ${path} failed: HTTP ${res.status}`);
+      // Surface Nextcloud's own explanation (e.g. "Logged in account must be
+      // an admin…") instead of a bare status code.
+      let message = `HTTP ${res.status}`;
+      try {
+        const meta = (JSON.parse(text) as { ocs?: { meta?: { message?: string } } }).ocs?.meta;
+        if (meta?.message) message += ` — ${meta.message}`;
+      } catch {
+        // non-JSON error body; keep the status only
+      }
+      throw new Error(`OCS request ${path} failed: ${message}`);
     }
-    const body = (await res.json()) as { ocs: { data: T } };
+    const body = JSON.parse(text) as { ocs: { data: T } };
     return body.ocs.data;
   }
 
