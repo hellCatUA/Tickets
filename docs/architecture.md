@@ -62,8 +62,9 @@ Notes:
 
 ## 3. Authentication flow
 
-1. Browser hits the app without a session → redirect to
-   `cloud.417group.org` OIDC authorize endpoint (code + PKCE).
+1. Browser hits the app without a session → Nextcloud-styled login screen as
+   an explicit acknowledgement step; pressing "Log in" starts the OIDC flow
+   against `cloud.417group.org` (code + PKCE).
 2. User is already logged into Nextcloud → immediate redirect back with a code
    (first time only: consent screen; if blocked inside the iframe, the app opens
    it in a popup and resumes).

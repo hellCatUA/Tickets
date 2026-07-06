@@ -24,10 +24,12 @@ router.beforeEach(async (to) => {
   if (to.name === 'login' && auth.isAuthenticated) return { path: '/' };
   if (to.meta.public) return true;
   if (!auth.isAuthenticated) {
-    // Straight to Nextcloud SSO — no intermediate button page. If the OIDC
-    // flow fails, the callback lands on /login?error=oidc, which breaks the loop.
-    auth.login(to.fullPath);
-    return false;
+    // Land on the login screen as an explicit acknowledgement step — even
+    // with a live Nextcloud session, signing in requires pressing "Log in".
+    return {
+      name: 'login',
+      query: to.fullPath !== '/' ? { returnTo: to.fullPath } : {},
+    };
   }
   return true;
 });
