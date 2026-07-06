@@ -20,7 +20,7 @@ function hideLogo(event: Event): void {
     <!-- Inside Nextcloud the host provides global chrome, so the top bar hides. -->
     <header v-if="!ui.embedded" class="topbar">
       <img class="brand-logo" :src="'/api/branding/logo'" alt="" @error="hideLogo" />
-      <span class="brand">417 Tickets</span>
+      <span class="brand">Tickets</span>
       <span class="spacer" />
       <button class="btn" type="button" @click="ui.cycleTheme()">Theme: {{ themeLabel }}</button>
       <span class="user">{{ auth.me?.displayName }}</span>

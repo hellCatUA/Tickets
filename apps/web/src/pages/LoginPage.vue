@@ -7,6 +7,7 @@ const auth = useAuthStore();
 const route = useRoute();
 
 const hasError = computed(() => route.query.error === 'oidc');
+const loggedOut = computed(() => route.query.loggedout === '1');
 const returnTo = computed(() =>
   typeof route.query.returnTo === 'string' ? route.query.returnTo : undefined,
 );
@@ -15,10 +16,10 @@ function hideLogo(event: Event): void {
   (event.target as HTMLImageElement).style.display = 'none';
 }
 
-// This page is only shown when the OIDC flow failed; otherwise it forwards
-// straight to Nextcloud sign-in.
+// Plain visits forward straight to Nextcloud sign-in. After an explicit
+// logout or a failed flow the page waits for the user instead of looping.
 onMounted(() => {
-  if (!hasError.value) auth.login(returnTo.value);
+  if (!hasError.value && !loggedOut.value) auth.login(returnTo.value);
 });
 </script>
 
@@ -26,13 +27,19 @@ onMounted(() => {
   <div class="login-wrap">
     <div class="card login-card">
       <img class="logo" :src="'/api/branding/logo'" alt="" @error="hideLogo" />
-      <h1>417 Tickets</h1>
+      <h1>Tickets</h1>
       <template v-if="hasError">
         <p class="error">
           Sign-in with Nextcloud failed. Please try again or contact an administrator.
         </p>
         <button class="btn btn-primary" type="button" @click="auth.login(returnTo)">
           Try again
+        </button>
+      </template>
+      <template v-else-if="loggedOut">
+        <p class="muted">You have been signed out.</p>
+        <button class="btn btn-primary" type="button" @click="auth.login()">
+          Sign in with Nextcloud
         </button>
       </template>
       <p v-else class="muted">Redirecting to Nextcloud sign-in…</p>

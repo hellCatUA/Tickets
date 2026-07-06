@@ -32,7 +32,9 @@ export const useAuthStore = defineStore('auth', {
     async logout(): Promise<void> {
       await api<void>('/auth/logout', { method: 'POST' });
       this.me = null;
-      window.location.href = '/login';
+      // loggedout=1 keeps the login page from auto-starting SSO again,
+      // which would instantly sign the user back in via the live NC session.
+      window.location.href = '/login?loggedout=1';
     },
   },
 });

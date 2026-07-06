@@ -19,6 +19,9 @@ export const router = createRouter({
 router.beforeEach(async (to) => {
   const auth = useAuthStore();
   if (!auth.loaded) await auth.fetchMe();
+  // A signed-in user has no business on the login page (e.g. a stale
+  // ?error=oidc URL refreshed after a later successful sign-in) — go home.
+  if (to.name === 'login' && auth.isAuthenticated) return { path: '/' };
   if (to.meta.public) return true;
   if (!auth.isAuthenticated) {
     // Straight to Nextcloud SSO — no intermediate button page. If the OIDC
