@@ -113,6 +113,19 @@ export class OidcService {
       nonce: pending.nonce,
       code_verifier: pending.codeVerifier,
     });
-    return tokenSet.claims();
+
+    // Nextcloud's `groups` claim (and other custom claims) are only guaranteed
+    // on the userinfo endpoint in the authorization-code flow, not in the ID
+    // token. Merge userinfo over the ID-token claims so group-based roles work
+    // regardless of where the provider places them. userinfo() also verifies
+    // the `sub` matches the ID token.
+    const idClaims = tokenSet.claims();
+    try {
+      const userinfo = await client.userinfo(tokenSet);
+      return { ...idClaims, ...userinfo } as IdTokenClaims;
+    } catch (err) {
+      this.logger.warn(`userinfo fetch failed, using ID-token claims only: ${(err as Error).message}`);
+      return idClaims;
+    }
   }
 }

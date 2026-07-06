@@ -90,9 +90,19 @@ curl -s http://127.0.0.1:4090/healthz            # → {"status":"ok","db":true}
 2. **Register the OIDC client** (Settings → Administration → Security → OIDC):
    - Name: `Tickets`
    - Redirect URI: `https://tickets.417group.org/auth/callback`
-   - Type: confidential; flow: authorization code
-   - Signing algorithm: RS256; make sure the **groups** claim/scope is enabled
+   - Flow: **Authorization code flow** (Потік авторизації коду)
+   - Access token type: Opaque is fine (the platform reads groups from the
+     userinfo endpoint, not the token)
    - Copy the generated client id/secret into `.env`
+   - **Groups**: do *not* add a custom claim for this. The app already has a
+     built-in **`groups` scope** that returns the full list of the user's
+     groups — the platform requests it automatically. (A custom claim with the
+     "User in group" function returns only a `true/false` for one group, which
+     is not what the platform needs — leave custom claims empty.) Groups are
+     delivered as **GIDs** (internal group ids); keep the default, since the
+     platform matches roles by GID. Only if you switched the app to display
+     names (`occ config:app:set oidc group_claim_type --value displayname`)
+     would you need to switch it back to `gid`.
 3. **Service account for directory sync**:
    - Create user `svc-tickets` (no admin rights needed to read users/groups on
      current NC releases; if the sync later returns 403, add it to the `admin`
@@ -229,8 +239,23 @@ docker compose logs api | grep -iE "oidc|discovery" | tail
   `.env` match the OIDC app, and restart with `docker compose up -d` after
   changing `.env`.
 - *`unauthorized_client` / `invalid_scope` in the error* — enable the
-  authorization-code flow and the `groups` scope for the client in the OIDC
-  Identity Provider settings.
+  authorization-code flow for the client in the OIDC Identity Provider
+  settings, and leave "Allowed scopes" empty (which permits all, including
+  `groups`).
+
+**Logged in, but you have no roles / no admin access** — the `groups` claim is
+not arriving. In the OIDC client, make sure there is **no custom claim named
+`groups`** using the "User in group" function (it returns a boolean, not the
+list) — remove it and rely on the built-in `groups` scope. Confirm the groups
+reach the platform:
+
+```bash
+docker compose logs api | grep -i userinfo   # a warning here means userinfo failed
+```
+
+`GET /api/me` in the browser dev tools should list your groups; if it is empty,
+the account genuinely has no Nextcloud groups, or a custom `groups` claim is
+overriding the built-in one.
 
 **Login loop only inside the Nextcloud iframe** — cookies are being blocked.
 Both sites must share the parent domain (`417group.org` — they do), and the
