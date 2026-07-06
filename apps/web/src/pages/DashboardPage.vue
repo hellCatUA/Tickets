@@ -15,14 +15,6 @@ const auth = useAuthStore();
     </section>
 
     <section class="card">
-      <h3>Your Nextcloud groups</h3>
-      <p v-if="auth.me?.groups.length === 0" class="muted">No groups.</p>
-      <p>
-        <span v-for="g in auth.me?.groups" :key="g" class="badge role">{{ g }}</span>
-      </p>
-    </section>
-
-    <section class="card">
       <h3>Platform status</h3>
       <p class="muted">
         Milestone M0: SSO, directory sync and role mapping are live. Ticket management arrives in
