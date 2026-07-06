@@ -35,6 +35,7 @@ import { Comment } from '../entities/comment.entity';
 import { Ticket } from '../entities/ticket.entity';
 import { TicketEvent } from '../entities/ticket-event.entity';
 import { User } from '../entities/user.entity';
+import { NotificationsService } from '../notifications/notifications.service';
 import { TicketsGateway } from './tickets.gateway';
 
 const OPEN_STATUSES: TicketStatus[] = [
@@ -71,7 +72,23 @@ export class TicketsService {
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly categories: CategoriesService,
     @Inject(forwardRef(() => TicketsGateway)) private readonly gateway: TicketsGateway,
+    @Inject(forwardRef(() => NotificationsService))
+    private readonly notifications: NotificationsService,
   ) {}
+
+  /** Notify ticket participants (requester + assignee) except the actor. */
+  private async notifyParticipants(
+    ticket: Ticket,
+    actorId: string,
+    input: { type: string; title: string; body?: string },
+    opts?: { staffOnly?: boolean },
+  ): Promise<void> {
+    const ids = new Set<string>();
+    if (!opts?.staffOnly) ids.add(ticket.requesterId);
+    if (ticket.assigneeId) ids.add(ticket.assigneeId);
+    ids.delete(actorId);
+    await this.notifications.createForUsers([...ids], { ...input, ticketId: ticket.id });
+  }
 
   // ---------- access helpers ----------
 
@@ -365,6 +382,11 @@ export class TicketsService {
     if (stampField) ticket[stampField] = new Date();
     await this.tickets.save(ticket);
     await this.addEvent(ticket.id, 'status_changed', me.id, { from, to: status });
+    await this.notifyParticipants(ticket, me.id, {
+      type: 'status',
+      title: `${ticket.ticketNo} is now ${status.replaceAll('_', ' ')}`,
+      body: ticket.title,
+    });
     return this.getDetail(me, id);
   }
 
@@ -387,6 +409,13 @@ export class TicketsService {
     await this.addEvent(ticket.id, 'assigned', me.id, {
       assigneeId,
       assigneeName: assignee?.displayName ?? null,
+    });
+    await this.notifyParticipants(ticket, me.id, {
+      type: 'assigned',
+      title: assignee
+        ? `${ticket.ticketNo} assigned to ${assignee.displayName}`
+        : `${ticket.ticketNo} is now unassigned`,
+      body: ticket.title,
     });
     return this.getDetail(me, id);
   }
@@ -432,6 +461,16 @@ export class TicketsService {
       });
     }
     await this.addEvent(id, 'comment_added', me.id, { commentId: comment.id, internal });
+    await this.notifyParticipants(
+      ticket,
+      me.id,
+      {
+        type: 'comment',
+        title: `${me.displayName} commented on ${ticket.ticketNo}`,
+        body: body.trim().slice(0, 140),
+      },
+      { staffOnly: internal },
+    );
     return this.toCommentDto(comment);
   }
 

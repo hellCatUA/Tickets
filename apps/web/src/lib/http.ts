@@ -31,5 +31,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     throw new HttpError(res.status, message);
   }
   if (res.status === 204) return undefined as T;
-  return (await res.json()) as T;
+  // Nest serializes a null return as an empty body — treat it as null.
+  const text = await res.text();
+  return (text ? JSON.parse(text) : null) as T;
 }

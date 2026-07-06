@@ -1,5 +1,7 @@
 import type {
   AttachmentDto,
+  AutomationRuleDto,
+  AutomationRunResultDto,
   CategoryAdminDto,
   CategoryDto,
   CommentDto,
@@ -8,6 +10,10 @@ import type {
   DashboardDto,
   FormField,
   GroupDto,
+  NotificationListDto,
+  PermissionGrantDto,
+  RoleMappingDto,
+  SyncResultDto,
   TicketDetailDto,
   TicketListDto,
   TicketPriority,
@@ -90,4 +96,35 @@ export const DashboardApi = {
 
 export const AdminApi = {
   groups: () => api<GroupDto[]>('/api/admin/groups'),
+  roleMappings: () => api<RoleMappingDto[]>('/api/admin/role-mappings'),
+  saveRoleMappings: (mappings: RoleMappingDto[]) =>
+    api<RoleMappingDto[]>('/api/admin/role-mappings', {
+      method: 'PUT',
+      body: JSON.stringify(mappings),
+    }),
+  permissionGrants: () => api<PermissionGrantDto[]>('/api/admin/permission-grants'),
+  savePermissionGrants: (grants: PermissionGrantDto[]) =>
+    api<PermissionGrantDto[]>('/api/admin/permission-grants', {
+      method: 'PUT',
+      body: JSON.stringify(grants),
+    }),
+  lastSync: () => api<SyncResultDto | null>('/api/admin/sync'),
+  runSync: () => api<SyncResultDto>('/api/admin/sync', { method: 'POST' }),
+  automationRules: () => api<AutomationRuleDto[]>('/api/admin/automation'),
+  saveAutomationRules: (rules: AutomationRuleDto[]) =>
+    api<AutomationRuleDto[]>('/api/admin/automation', {
+      method: 'PUT',
+      body: JSON.stringify(rules),
+    }),
+  runAutomation: () =>
+    api<AutomationRunResultDto>('/api/admin/automation/run', { method: 'POST' }),
+};
+
+export const NotificationsApi = {
+  list: (limit = 20) => api<NotificationListDto>(`/api/notifications?limit=${limit}`),
+  markRead: (ids?: string[]) =>
+    api<{ unreadCount: number }>('/api/notifications/read', {
+      method: 'POST',
+      body: JSON.stringify(ids ? { ids } : {}),
+    }),
 };

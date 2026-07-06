@@ -41,7 +41,10 @@ export class TicketsGateway implements OnGatewayInit, OnGatewayConnection {
     const userId = (socket.request as SessionRequest).session?.userId;
     if (!userId) {
       socket.disconnect(true);
+      return;
     }
+    // Personal room for notification pushes.
+    void socket.join(`user:${userId}`);
   }
 
   @SubscribeMessage('ticket:join')
@@ -72,5 +75,11 @@ export class TicketsGateway implements OnGatewayInit, OnGatewayConnection {
 
   emitTicketUpdate(ticketId: string, payload: Record<string, unknown>): void {
     this.server?.to(`ticket:${ticketId}`).emit('ticket:update', { ticketId, ...payload });
+  }
+
+  emitNotification(userIds: string[]): void {
+    for (const userId of userIds) {
+      this.server?.to(`user:${userId}`).emit('notification:new', {});
+    }
   }
 }

@@ -1,19 +1,38 @@
 <script setup lang="ts">
 import { Role } from '@tickets/shared';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
+import { useNotificationsStore } from '../stores/notifications';
 import { useUiStore } from '../stores/ui';
 
 const auth = useAuthStore();
 const ui = useUiStore();
+const notif = useNotificationsStore();
 const route = useRoute();
+const router = useRouter();
 
 const isAdmin = computed(() => auth.roles.includes(Role.Admin));
 const isTicketsSection = computed(() => String(route.path).startsWith('/tickets'));
 
 const menuOpen = ref(false);
 const menuRef = ref<HTMLElement | null>(null);
+const bellOpen = ref(false);
+const bellRef = ref<HTMLElement | null>(null);
+
+async function openNotification(id: string, ticketId: string | null): Promise<void> {
+  bellOpen.value = false;
+  await notif.markRead(id);
+  if (ticketId) await router.push(`/tickets/${ticketId}`);
+}
+
+function formatWhen(iso: string): string {
+  const diffMin = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000);
+  if (diffMin < 1) return 'just now';
+  if (diffMin < 60) return `${diffMin}m ago`;
+  if (diffMin < 24 * 60) return `${Math.floor(diffMin / 60)}h ago`;
+  return new Date(iso).toLocaleDateString();
+}
 
 const themeLabel = computed(
   () => ({ auto: 'Auto', light: 'Light', dark: 'Dark' })[ui.theme],
@@ -38,9 +57,15 @@ function onDocumentClick(event: MouseEvent): void {
   if (menuOpen.value && menuRef.value && !menuRef.value.contains(event.target as Node)) {
     menuOpen.value = false;
   }
+  if (bellOpen.value && bellRef.value && !bellRef.value.contains(event.target as Node)) {
+    bellOpen.value = false;
+  }
 }
 
-onMounted(() => document.addEventListener('click', onDocumentClick));
+onMounted(() => {
+  document.addEventListener('click', onDocumentClick);
+  notif.connect();
+});
 onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick));
 </script>
 
@@ -51,6 +76,58 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick));
       <img class="brand-logo" :src="'/api/branding/logo'" alt="" @error="hideLogo" />
       <span class="brand">Tickets</span>
       <span class="spacer" />
+
+      <div ref="bellRef" class="user-menu">
+        <button
+          class="bell-button"
+          type="button"
+          :title="`${notif.unreadCount} unread notifications`"
+          @click="bellOpen = !bellOpen"
+        >
+          <svg
+            width="19"
+            height="19"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+            <path d="M13.7 21a2 2 0 0 1-3.4 0" />
+          </svg>
+          <span v-if="notif.unreadCount > 0" class="bell-badge">
+            {{ notif.unreadCount > 99 ? '99+' : notif.unreadCount }}
+          </span>
+        </button>
+        <div v-if="bellOpen" class="dropdown bell-dropdown">
+          <div class="bell-head">
+            <strong>Notifications</strong>
+            <button
+              v-if="notif.unreadCount > 0"
+              class="mark-all"
+              type="button"
+              @click="notif.markAllRead()"
+            >
+              Mark all read
+            </button>
+          </div>
+          <p v-if="notif.items.length === 0" class="bell-empty">Nothing here yet.</p>
+          <button
+            v-for="n in notif.items"
+            :key="n.id"
+            class="notif"
+            :class="{ unread: !n.readAt }"
+            type="button"
+            @click="openNotification(n.id, n.ticketId)"
+          >
+            <span class="notif-title">{{ n.title }}</span>
+            <span v-if="n.body" class="notif-body">{{ n.body }}</span>
+            <span class="notif-when">{{ formatWhen(n.createdAt) }}</span>
+          </button>
+        </div>
+      </div>
 
       <div ref="menuRef" class="user-menu">
         <button class="user-button" type="button" @click="menuOpen = !menuOpen">
@@ -84,6 +161,8 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick));
         <template v-if="isAdmin">
           <span class="nav-section">Admin</span>
           <router-link to="/admin/categories">Categories</router-link>
+          <router-link to="/admin/access">Access</router-link>
+          <router-link to="/admin/automation">Automation</router-link>
         </template>
         <template v-if="ui.embedded">
           <button class="btn theme-mini" type="button" @click="ui.cycleTheme()">
@@ -130,6 +209,118 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick));
 
 .user-menu {
   position: relative;
+}
+
+.bell-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.bell-button:hover {
+  background: var(--surface-2);
+}
+
+.bell-badge {
+  position: absolute;
+  top: 0;
+  right: -2px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 17px;
+  text-align: center;
+}
+
+.bell-dropdown {
+  min-width: 320px;
+  max-width: 380px;
+  max-height: 420px;
+  overflow: auto;
+}
+
+.bell-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.4rem 0.65rem 0.55rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 0.3rem;
+}
+
+.mark-all {
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 0.82rem;
+}
+
+.bell-empty {
+  padding: 0.75rem;
+  margin: 0;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.notif {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: none;
+  border-radius: calc(var(--radius) - 4px);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.notif:hover {
+  background: var(--surface-2);
+}
+
+.notif.unread .notif-title {
+  font-weight: 700;
+}
+
+.notif.unread .notif-title::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  vertical-align: middle;
+}
+
+.notif-body {
+  font-size: 0.83rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notif-when {
+  font-size: 0.75rem;
+  color: var(--text-muted);
 }
 
 .user-button {

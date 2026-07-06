@@ -24,6 +24,18 @@ export const router = createRouter({
       meta: { role: Role.Admin },
     },
     {
+      path: '/admin/access',
+      name: 'admin-access',
+      component: () => import('./pages/AdminAccessPage.vue'),
+      meta: { role: Role.Admin },
+    },
+    {
+      path: '/admin/automation',
+      name: 'admin-automation',
+      component: () => import('./pages/AdminAutomationPage.vue'),
+      meta: { role: Role.Admin },
+    },
+    {
       path: '/login',
       name: 'login',
       component: () => import('./pages/LoginPage.vue'),

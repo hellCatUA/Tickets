@@ -164,6 +164,8 @@ function eventText(e: TicketEventDto): string {
       return `changed priority: ${prioLabel(p.from)} → ${prioLabel(p.to)}`;
     case 'attachment_added':
       return `attached ${p.filename}`;
+    case 'escalated':
+      return `escalated to managers (unassigned for ${p.hours}h)`;
     default:
       return e.type;
   }

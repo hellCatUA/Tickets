@@ -113,6 +113,34 @@ export interface DashboardDto {
   recent: TicketSummaryDto[];
 }
 
+export interface NotificationDto {
+  id: string;
+  type: string;
+  title: string;
+  body: string;
+  ticketId: string | null;
+  readAt: string | null;
+  createdAt: string;
+}
+
+export interface NotificationListDto {
+  items: NotificationDto[];
+  unreadCount: number;
+}
+
+export type AutomationRuleType = 'auto_close_resolved' | 'escalate_unassigned';
+
+export interface AutomationRuleDto {
+  type: AutomationRuleType;
+  enabled: boolean;
+  params: Record<string, number>;
+}
+
+export interface AutomationRunResultDto {
+  closed: number;
+  escalated: number;
+}
+
 export interface TicketDetailDto extends TicketSummaryDto {
   description: string;
   formFields: FormField[];
