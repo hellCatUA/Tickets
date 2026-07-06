@@ -104,6 +104,13 @@ export class CategoriesService {
   async updateForm(id: string, fields: FormField[]): Promise<CategoryAdminDto> {
     const category = await this.requireCategory(id);
     if (!Array.isArray(fields)) throw new BadRequestException('Expected a field array');
+    // Defensive normalization: drop blank/whitespace-only options the editor
+    // may leave behind mid-edit.
+    for (const field of fields) {
+      if (field.options) {
+        field.options = field.options.map((o) => String(o).trim()).filter(Boolean);
+      }
+    }
     const errors = validateFormFields(fields);
     if (errors.length > 0) throw new BadRequestException(errors.join('; '));
     category.formVersion += 1;

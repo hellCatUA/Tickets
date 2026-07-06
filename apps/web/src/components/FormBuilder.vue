@@ -37,13 +37,16 @@ function onLabel(index: number, label: string): void {
   patch(index, { label, ...(autoKey ? { key: slugify(label) } : {}) });
 }
 
+// While typing, keep lines verbatim — normalizing on every keystroke re-renders
+// the textarea and eats trailing newlines/spaces (Enter appeared to do nothing).
 function setOptions(index: number, raw: string): void {
-  patch(index, {
-    options: raw
-      .split('\n')
-      .map((o) => o.trim())
-      .filter(Boolean),
-  });
+  patch(index, { options: raw.split('\n') });
+}
+
+// Normalize once the field loses focus.
+function cleanOptions(index: number): void {
+  const options = (props.modelValue[index]?.options ?? []).map((o) => o.trim()).filter(Boolean);
+  patch(index, { options });
 }
 
 function setShowIf(index: number, fieldKey: string, equals: string): void {
@@ -124,6 +127,7 @@ function move(index: number, delta: number): void {
             rows="3"
             :value="(field.options ?? []).join('\n')"
             @input="setOptions(i, ($event.target as HTMLTextAreaElement).value)"
+            @blur="cleanOptions(i)"
           />
         </div>
       </div>
