@@ -2,7 +2,7 @@ import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Request } from 'express';
 import type { Session, SessionData } from 'express-session';
-import { Client, generators, IdTokenClaims, Issuer } from 'openid-client';
+import { Client, generators, IdTokenClaims, Issuer, IssuerMetadata } from 'openid-client';
 
 type AppSession = Session & Partial<SessionData>;
 
@@ -29,19 +29,57 @@ export class OidcService {
     return this.client;
   }
 
+  /**
+   * Candidate discovery URLs. Nextcloud serves the OIDC app's discovery
+   * document on different paths depending on whether /.well-known rewrites
+   * are configured in its web server, so unless OIDC_DISCOVERY_URL pins one
+   * explicitly we probe the known variants.
+   */
+  private discoveryCandidates(): string[] {
+    const explicit = this.config.get<string>('OIDC_DISCOVERY_URL');
+    if (explicit) return [explicit];
+    const base = this.config.getOrThrow<string>('OIDC_ISSUER').replace(/\/$/, '');
+    return [
+      `${base}/.well-known/openid-configuration`,
+      `${base}/index.php/.well-known/openid-configuration`,
+      `${base}/index.php/apps/oidc/openid-configuration`,
+      `${base}/apps/oidc/openid-configuration`,
+    ];
+  }
+
+  /**
+   * Fetch the discovery document ourselves: openid-client's Issuer.discover()
+   * appends /.well-known/openid-configuration to URLs that lack it, which
+   * breaks Nextcloud's app-route discovery paths.
+   */
+  private async fetchIssuer(url: string): Promise<Issuer> {
+    const res = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const metadata = (await res.json()) as IssuerMetadata;
+    if (!metadata.issuer || !metadata.authorization_endpoint || !metadata.token_endpoint) {
+      throw new Error('response is not an OIDC discovery document');
+    }
+    return new Issuer(metadata);
+  }
+
   private async discover(): Promise<Client> {
-    const issuer = this.config.getOrThrow<string>('OIDC_ISSUER');
-    const discoveryUrl =
-      this.config.get<string>('OIDC_DISCOVERY_URL') ||
-      `${issuer.replace(/\/$/, '')}/.well-known/openid-configuration`;
-    this.logger.log(`Discovering OIDC configuration at ${discoveryUrl}`);
-    const discovered = await Issuer.discover(discoveryUrl);
-    return new discovered.Client({
-      client_id: this.config.getOrThrow<string>('OIDC_CLIENT_ID'),
-      client_secret: this.config.getOrThrow<string>('OIDC_CLIENT_SECRET'),
-      redirect_uris: [this.redirectUri],
-      response_types: ['code'],
-    });
+    let lastError: Error | undefined;
+    for (const url of this.discoveryCandidates()) {
+      try {
+        const issuer = await this.fetchIssuer(url);
+        this.logger.log(`OIDC discovery succeeded at ${url}`);
+        return new issuer.Client({
+          client_id: this.config.getOrThrow<string>('OIDC_CLIENT_ID'),
+          client_secret: this.config.getOrThrow<string>('OIDC_CLIENT_SECRET'),
+          redirect_uris: [this.redirectUri],
+          response_types: ['code'],
+        });
+      } catch (err) {
+        lastError = err as Error;
+        this.logger.warn(`OIDC discovery failed at ${url}: ${lastError.message}`);
+      }
+    }
+    throw lastError ?? new Error('OIDC discovery failed');
   }
 
   async buildAuthorizationUrl(session: AppSession, returnTo?: string): Promise<string> {

@@ -203,18 +203,34 @@ if the `db` container still restarts, reset the empty volume once with
 `docker compose logs api`.
 
 **"Sign-in with Nextcloud failed" / redirect to `/login?error=oidc`** — the
-API cannot reach `https://cloud.417group.org` (OIDC discovery). Test from
-inside the container:
+OIDC flow broke somewhere. The API logs say exactly where:
 
 ```bash
-docker compose exec api \
-  wget -qO- https://cloud.417group.org/.well-known/openid-configuration | head -c 200
+docker compose logs api | grep -iE "oidc|discovery" | tail
 ```
 
-If DNS does not resolve there, uncomment `extra_hosts` in
-`compose.yml` and set the host's Tailscale IP; if TLS fails, the
-certificate on `cloud.417group.org` must be valid (it already is if browsers
-accept it).
+- *Every `OIDC discovery failed …` line, none succeeded* — the API cannot
+  fetch the discovery document. It probes all known Nextcloud variants
+  automatically (`/.well-known/…`, `/index.php/.well-known/…`,
+  `/index.php/apps/oidc/openid-configuration`). Check reachability from
+  inside the container:
+
+  ```bash
+  docker compose exec api \
+    wget -qO- https://cloud.417group.org/index.php/apps/oidc/openid-configuration | head -c 200
+  ```
+
+  If DNS does not resolve there, uncomment `extra_hosts` in `compose.yml`
+  and set the host's Tailscale IP. If TLS fails, the certificate on
+  `cloud.417group.org` must be valid (it is, if browsers accept it).
+- *`OIDC discovery succeeded` but `OIDC callback failed: …`* — the client
+  registration doesn't match: verify the redirect URI is exactly
+  `https://tickets.417group.org/auth/callback`, the client id/secret in
+  `.env` match the OIDC app, and restart with `docker compose up -d` after
+  changing `.env`.
+- *`unauthorized_client` / `invalid_scope` in the error* — enable the
+  authorization-code flow and the `groups` scope for the client in the OIDC
+  Identity Provider settings.
 
 **Login loop only inside the Nextcloud iframe** — cookies are being blocked.
 Both sites must share the parent domain (`417group.org` — they do), and the
