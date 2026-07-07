@@ -54,7 +54,13 @@ export class FamiliesController {
   @Post()
   @RequirePermissions(Permission.ManageObjects)
   create(
-    @Body() dto: { name: string; description?: string; fields?: FormField[] },
+    @Body()
+    dto: {
+      name: string;
+      description?: string;
+      fields?: FormField[];
+      defaultCategoryId?: string | null;
+    },
   ): Promise<ObjectFamilyDto> {
     return this.assets.saveFamily(null, dto);
   }
@@ -63,7 +69,13 @@ export class FamiliesController {
   @RequirePermissions(Permission.ManageObjects)
   update(
     @Param('id') id: string,
-    @Body() dto: { name?: string; description?: string; fields?: FormField[] },
+    @Body()
+    dto: {
+      name?: string;
+      description?: string;
+      fields?: FormField[];
+      defaultCategoryId?: string | null;
+    },
   ): Promise<ObjectFamilyDto> {
     return this.assets.saveFamily(id, dto);
   }

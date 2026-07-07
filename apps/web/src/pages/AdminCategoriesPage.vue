@@ -3,16 +3,18 @@ import {
   CategoryAdminDto,
   FormField,
   GroupDto,
+  ObjectFamilyDto,
   PriorityRule,
   TICKET_PRIORITY_LABELS,
   TicketPriority,
 } from '@tickets/shared';
 import { computed, onMounted, ref } from 'vue';
 import FormBuilder from '../components/FormBuilder.vue';
-import { AdminApi, CategoriesApi } from '../lib/api';
+import { AdminApi, AssetsApi, CategoriesApi } from '../lib/api';
 
 const categories = ref<CategoryAdminDto[]>([]);
 const groups = ref<GroupDto[]>([]);
+const objectFamiliesList = ref<ObjectFamilyDto[]>([]);
 const selectedId = ref<string | null>(null);
 const isNew = ref(false);
 const error = ref('');
@@ -26,6 +28,14 @@ const agentGroups = ref<string[]>([]);
 const defaultPriority = ref<TicketPriority>(TicketPriority.Normal);
 const allowRequesterPriority = ref(false);
 const priorityRules = ref<PriorityRule[]>([]);
+const objectFamilies = ref<string[]>([]);
+const objectRequired = ref(false);
+
+function toggleFamily(id: string, checked: boolean): void {
+  objectFamilies.value = checked
+    ? [...objectFamilies.value, id]
+    : objectFamilies.value.filter((f) => f !== id);
+}
 const active = ref(true);
 const fields = ref<FormField[]>([]);
 
@@ -76,6 +86,8 @@ function select(category: CategoryAdminDto | null): void {
   defaultPriority.value = category?.defaultPriority ?? TicketPriority.Normal;
   allowRequesterPriority.value = category?.allowRequesterPriority ?? false;
   priorityRules.value = JSON.parse(JSON.stringify(category?.priorityRules ?? [])) as PriorityRule[];
+  objectFamilies.value = [...(category?.objectFamilies ?? [])];
+  objectRequired.value = category?.objectRequired ?? false;
   active.value = category?.active ?? true;
   fields.value = JSON.parse(JSON.stringify(category?.formFields ?? [])) as FormField[];
 }
@@ -89,9 +101,14 @@ async function reload(keepId?: string): Promise<void> {
 }
 
 onMounted(async () => {
-  const [cats, grps] = await Promise.all([CategoriesApi.adminList(), AdminApi.groups()]);
+  const [cats, grps, fams] = await Promise.all([
+    CategoriesApi.adminList(),
+    AdminApi.groups(),
+    AssetsApi.families().catch(() => []),
+  ]);
   categories.value = cats;
   groups.value = grps;
+  objectFamiliesList.value = fams;
 });
 
 function toggleGroup(gid: string, checked: boolean): void {
@@ -112,6 +129,8 @@ async function saveCategory(): Promise<void> {
       defaultPriority: defaultPriority.value,
       allowRequesterPriority: allowRequesterPriority.value,
       priorityRules: priorityRules.value,
+      objectFamilies: objectFamilies.value,
+      objectRequired: objectRequired.value,
       active: active.value,
     };
     if (isNew.value) {
@@ -218,6 +237,28 @@ async function saveForm(): Promise<void> {
                 {{ g.displayName }}
               </label>
             </div>
+          </div>
+
+          <div v-if="objectFamiliesList.length > 0" class="priority-block">
+            <div>
+              <label class="mini">
+                Applies to device families (empty = any device or none)
+              </label>
+              <div class="groups">
+                <label v-for="f in objectFamiliesList" :key="f.id" class="check">
+                  <input
+                    type="checkbox"
+                    :checked="objectFamilies.includes(f.id)"
+                    @change="toggleFamily(f.id, ($event.target as HTMLInputElement).checked)"
+                  />
+                  {{ f.name }}
+                </label>
+              </div>
+            </div>
+            <label class="check">
+              <input v-model="objectRequired" type="checkbox" />
+              Require an object/device on tickets in this category
+            </label>
           </div>
 
           <div class="priority-block">

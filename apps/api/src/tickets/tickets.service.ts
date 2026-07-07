@@ -190,9 +190,15 @@ export class TicketsService {
 
     let locationId = dto.locationId ?? null;
     const objectId = dto.objectId ?? null;
+    if (category.objectRequired && !objectId) {
+      throw new BadRequestException('This category requires selecting an object/device');
+    }
     if (objectId) {
       const object = await this.objects.findOne({ where: { id: objectId, active: true } });
       if (!object) throw new BadRequestException('Unknown object');
+      if (category.objectFamilies.length > 0 && !category.objectFamilies.includes(object.familyId)) {
+        throw new BadRequestException('This category does not apply to that device type');
+      }
       // The object's own location wins when none was picked explicitly.
       if (!locationId) locationId = object.locationId;
     }

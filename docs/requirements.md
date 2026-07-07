@@ -61,6 +61,10 @@ independently of the four base roles:
 - Form schemas and submitted values are stored as JSONB — adding
   categories/fields requires no code changes or migrations.
 - Each category can define: assigned agent group(s), default priority, SLA targets.
+- **Category ↔ device link**: a category may be limited to specific object
+  families (empty = applies to anything) and may **require an object** on its
+  tickets; both are validated server-side. A family may set a **default
+  category**, so a QR scan pre-selects both the device and the category.
 
 ### 4.2 Locations and objects
 

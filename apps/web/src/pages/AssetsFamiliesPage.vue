@@ -1,18 +1,20 @@
 <script setup lang="ts">
-import { FormField, ObjectFamilyDto, Permission } from '@tickets/shared';
+import { CategoryDto, FormField, ObjectFamilyDto, Permission } from '@tickets/shared';
 import { computed, onMounted, ref } from 'vue';
 import FormBuilder from '../components/FormBuilder.vue';
-import { AssetsApi } from '../lib/api';
+import { AssetsApi, CategoriesApi } from '../lib/api';
 import { useAuthStore } from '../stores/auth';
 
 const auth = useAuthStore();
 const canManage = computed(() => (auth.me?.permissions ?? []).includes(Permission.ManageObjects));
 
 const families = ref<ObjectFamilyDto[]>([]);
+const categories = ref<CategoryDto[]>([]);
 const selectedId = ref<string | null>(null);
 const isNew = ref(false);
 const name = ref('');
 const description = ref('');
+const defaultCategoryId = ref<string | null>(null);
 const fields = ref<FormField[]>([]);
 const error = ref('');
 const notice = ref('');
@@ -22,6 +24,7 @@ function select(family: ObjectFamilyDto | null): void {
   selectedId.value = family?.id ?? null;
   name.value = family?.name ?? '';
   description.value = family?.description ?? '';
+  defaultCategoryId.value = family?.defaultCategoryId ?? null;
   fields.value = JSON.parse(JSON.stringify(family?.fields ?? [])) as FormField[];
   error.value = '';
   notice.value = '';
@@ -32,7 +35,10 @@ async function reload(keepId?: string): Promise<void> {
   if (keepId) select(families.value.find((f) => f.id === keepId) ?? null);
 }
 
-onMounted(() => reload());
+onMounted(async () => {
+  categories.value = await CategoriesApi.list().catch(() => []);
+  await reload();
+});
 
 async function save(): Promise<void> {
   error.value = '';
@@ -41,6 +47,7 @@ async function save(): Promise<void> {
       name: name.value,
       description: description.value,
       fields: fields.value,
+      defaultCategoryId: defaultCategoryId.value,
     });
     await reload(saved.id);
     notice.value = 'Family saved.';
@@ -85,6 +92,13 @@ async function save(): Promise<void> {
         <div>
           <label class="mini">Description</label>
           <textarea v-model="description" rows="2" :disabled="!canManage" />
+        </div>
+        <div>
+          <label class="mini">Default ticket category (pre-selected on QR scans)</label>
+          <select v-model="defaultCategoryId" :disabled="!canManage">
+            <option :value="null">—</option>
+            <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
+          </select>
         </div>
         <div>
           <label class="mini">Custom fields (serial &amp; inventory numbers are built-in)</label>

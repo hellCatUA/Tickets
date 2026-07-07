@@ -72,12 +72,18 @@ export class AssetsService {
       name: f.name,
       description: f.description,
       fields: f.fields,
+      defaultCategoryId: f.defaultCategoryId,
     }));
   }
 
   async saveFamily(
     id: string | null,
-    dto: { name?: string; description?: string; fields?: FormField[] },
+    dto: {
+      name?: string;
+      description?: string;
+      fields?: FormField[];
+      defaultCategoryId?: string | null;
+    },
   ): Promise<ObjectFamilyDto> {
     let family = id ? await this.families.findOne({ where: { id } }) : null;
     if (id && !family) throw new NotFoundException('Family not found');
@@ -96,14 +102,22 @@ export class AssetsService {
         name: dto.name.trim(),
         description: dto.description ?? '',
         fields: dto.fields ?? [],
+        defaultCategoryId: dto.defaultCategoryId ?? null,
       });
     } else {
       if (dto.name !== undefined) family.name = dto.name.trim() || family.name;
       if (dto.description !== undefined) family.description = dto.description;
       if (dto.fields !== undefined) family.fields = dto.fields;
+      if (dto.defaultCategoryId !== undefined) family.defaultCategoryId = dto.defaultCategoryId;
     }
     const saved = await this.families.save(family);
-    return { id: saved.id, name: saved.name, description: saved.description, fields: saved.fields };
+    return {
+      id: saved.id,
+      name: saved.name,
+      description: saved.description,
+      fields: saved.fields,
+      defaultCategoryId: saved.defaultCategoryId,
+    };
   }
 
   // ---------- objects ----------
@@ -155,7 +169,9 @@ export class AssetsService {
       id: object.id,
       name: object.name,
       serialNo: object.serialNo,
+      familyId: object.familyId,
       familyName: object.family?.name ?? '',
+      defaultCategoryId: object.family?.defaultCategoryId ?? null,
       locationId: object.locationId,
       locationName: object.location?.name ?? null,
     };

@@ -36,6 +36,14 @@ export class Category {
   @Column({ type: 'jsonb', default: () => "'[]'" })
   priorityRules: PriorityRule[];
 
+  /** Object-family ids this category applies to; empty = all. */
+  @Column({ type: 'jsonb', default: () => "'[]'" })
+  objectFamilies: string[];
+
+  /** Tickets in this category must reference an object. */
+  @Column({ default: false })
+  objectRequired: boolean;
+
   @Column({ default: true })
   active: boolean;
 

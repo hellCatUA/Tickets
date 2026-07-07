@@ -23,9 +23,22 @@ const locationId = ref<string | null>(null);
 const objectId = ref<string | null>(null);
 const scannedObject = ref<ObjectByTokenDto | null>(null);
 
-/** Objects narrowed to the picked location (all when none picked). */
+const selectedObject = computed(
+  () => objects.value.find((o) => o.id === objectId.value) ?? null,
+);
+const selectedFamilyId = computed(
+  () => selectedObject.value?.familyId ?? scannedObject.value?.familyId ?? null,
+);
+
+/** Objects narrowed to the picked location and the category's device families. */
 const objectOptions = computed(() =>
-  locationId.value ? objects.value.filter((o) => o.locationId === locationId.value) : objects.value,
+  objects.value.filter(
+    (o) =>
+      (!locationId.value || o.locationId === locationId.value) &&
+      (!category.value ||
+        category.value.objectFamilies.length === 0 ||
+        category.value.objectFamilies.includes(o.familyId)),
+  ),
 );
 const categoryId = ref('');
 const title = ref('');
@@ -48,7 +61,12 @@ const options = computed(() => {
   const out: Array<{ id: string; label: string }> = [];
   const walk = (parentId: string | null, depth: number): void => {
     for (const c of byParent.get(parentId) ?? []) {
-      out.push({ id: c.id, label: `${'   '.repeat(depth)}${c.name}` });
+      // Hide categories that do not apply to the picked device's family.
+      const applies =
+        !selectedFamilyId.value ||
+        c.objectFamilies.length === 0 ||
+        c.objectFamilies.includes(selectedFamilyId.value);
+      if (applies) out.push({ id: c.id, label: `${'   '.repeat(depth)}${c.name}` });
       walk(c.id, depth + 1);
     }
   };
@@ -60,6 +78,21 @@ watch(category, (c) => {
   formValues.value = {};
   if (c) priority.value = c.defaultPriority;
 });
+
+// Picking a device can invalidate the current category (and vice versa).
+watch(selectedFamilyId, () => {
+  if (categoryId.value && !options.value.some((o) => o.id === categoryId.value)) {
+    categoryId.value = '';
+  }
+});
+watch(
+  () => category.value?.id,
+  () => {
+    if (objectId.value && !objectOptions.value.some((o) => o.id === objectId.value)) {
+      objectId.value = null;
+    }
+  },
+);
 
 onMounted(async () => {
   [categories.value, locations.value, objects.value] = await Promise.all([
@@ -74,6 +107,11 @@ onMounted(async () => {
       scannedObject.value = await AssetsApi.objectByToken(token);
       objectId.value = scannedObject.value.id;
       locationId.value = scannedObject.value.locationId;
+      // The family's default category makes QR reporting a two-field affair.
+      const defaultCat = scannedObject.value.defaultCategoryId;
+      if (defaultCat && categories.value.some((c) => c.id === defaultCat)) {
+        categoryId.value = defaultCat;
+      }
     } catch {
       scannedObject.value = null;
     }
@@ -84,6 +122,10 @@ async function submit(): Promise<void> {
   error.value = '';
   if (!categoryId.value) {
     error.value = 'Please choose a category';
+    return;
+  }
+  if (category.value?.objectRequired && !objectId.value) {
+    error.value = 'This category requires selecting an object/device';
     return;
   }
   submitting.value = true;
@@ -156,7 +198,9 @@ async function submit(): Promise<void> {
           </select>
         </div>
         <div v-if="objects.length > 0" class="grow">
-          <label class="field-label">Object / device</label>
+          <label class="field-label">
+            Object / device<span v-if="category?.objectRequired" class="req">*</span>
+          </label>
           <select v-model="objectId">
             <option :value="null">—</option>
             <option v-for="o in objectOptions" :key="o.id" :value="o.id">

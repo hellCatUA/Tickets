@@ -88,6 +88,8 @@ export class CategoriesService {
         defaultPriority: dto.defaultPriority ?? TicketPriority.Normal,
         allowRequesterPriority: dto.allowRequesterPriority ?? false,
         priorityRules: this.sanitizeRules(dto.priorityRules),
+        objectFamilies: Array.isArray(dto.objectFamilies) ? dto.objectFamilies : [],
+        objectRequired: dto.objectRequired ?? false,
         formVersion: 1,
       }),
     );
@@ -114,6 +116,10 @@ export class CategoriesService {
     if (patch.priorityRules !== undefined) {
       category.priorityRules = this.sanitizeRules(patch.priorityRules);
     }
+    if (patch.objectFamilies !== undefined) {
+      category.objectFamilies = Array.isArray(patch.objectFamilies) ? patch.objectFamilies : [];
+    }
+    if (patch.objectRequired !== undefined) category.objectRequired = patch.objectRequired;
     if (patch.active !== undefined) category.active = patch.active;
     if (patch.sortOrder !== undefined) category.sortOrder = patch.sortOrder;
     const saved = await this.categories.save(category);
@@ -158,6 +164,8 @@ export class CategoriesService {
       parentId: c.parentId,
       defaultPriority: c.defaultPriority,
       allowRequesterPriority: c.allowRequesterPriority,
+      objectFamilies: c.objectFamilies,
+      objectRequired: c.objectRequired,
       active: c.active,
       formFields: fields,
     };

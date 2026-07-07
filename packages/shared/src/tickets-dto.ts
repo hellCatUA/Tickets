@@ -21,6 +21,10 @@ export interface CategoryDto {
   defaultPriority: TicketPriority;
   /** When false (default), requesters cannot pick a priority — rules/default apply. */
   allowRequesterPriority: boolean;
+  /** Device families this category applies to; empty = applies to everything. */
+  objectFamilies: string[];
+  /** When true, a ticket in this category must reference an object. */
+  objectRequired: boolean;
   active: boolean;
   formFields: FormField[];
 }
@@ -40,6 +44,8 @@ export interface CreateCategoryDto {
   defaultPriority?: TicketPriority;
   allowRequesterPriority?: boolean;
   priorityRules?: PriorityRule[];
+  objectFamilies?: string[];
+  objectRequired?: boolean;
 }
 
 export interface CreateTicketDto {

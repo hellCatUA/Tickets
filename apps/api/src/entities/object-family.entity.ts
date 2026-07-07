@@ -16,6 +16,10 @@ export class ObjectFamily {
   @Column({ type: 'jsonb', default: () => "'[]'" })
   fields: FormField[];
 
+  /** Category pre-selected when a device of this family is scanned via QR. */
+  @Column({ type: 'uuid', nullable: true })
+  defaultCategoryId: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 }

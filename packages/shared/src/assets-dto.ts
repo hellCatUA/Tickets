@@ -13,6 +13,8 @@ export interface ObjectFamilyDto {
   name: string;
   description: string;
   fields: FormField[];
+  /** Category pre-selected when a device of this family is scanned via QR. */
+  defaultCategoryId: string | null;
 }
 
 export interface AssetObjectSummaryDto {
@@ -54,7 +56,9 @@ export interface ObjectByTokenDto {
   id: string;
   name: string;
   serialNo: string;
+  familyId: string;
   familyName: string;
+  defaultCategoryId: string | null;
   locationId: string | null;
   locationName: string | null;
 }

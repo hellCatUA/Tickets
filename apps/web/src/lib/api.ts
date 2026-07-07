@@ -111,7 +111,15 @@ export const AssetsApi = {
       body: JSON.stringify(dto),
     }),
   families: () => api<ObjectFamilyDto[]>('/api/object-families'),
-  saveFamily: (id: string | null, dto: { name?: string; description?: string; fields?: FormField[] }) =>
+  saveFamily: (
+    id: string | null,
+    dto: {
+      name?: string;
+      description?: string;
+      fields?: FormField[];
+      defaultCategoryId?: string | null;
+    },
+  ) =>
     api<ObjectFamilyDto>(id ? `/api/object-families/${id}` : '/api/object-families', {
       method: id ? 'PATCH' : 'POST',
       body: JSON.stringify(dto),
