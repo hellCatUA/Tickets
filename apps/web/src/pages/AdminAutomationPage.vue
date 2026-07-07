@@ -87,7 +87,8 @@ async function runNow(): Promise<void> {
         {{ running ? 'Running…' : 'Run now' }}
       </button>
       <span v-if="runResult" class="muted">
-        Last run: {{ runResult.closed }} closed, {{ runResult.escalated }} escalated.
+        Last run: {{ runResult.closed }} closed, {{ runResult.escalated }} escalated,
+        {{ runResult.maintenanceCreated }} maintenance tickets.
       </span>
     </div>
 

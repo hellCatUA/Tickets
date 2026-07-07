@@ -12,6 +12,7 @@ import {
 import { AssetObject } from './asset-object.entity';
 import { Category } from './category.entity';
 import { Location } from './location.entity';
+import { Problem } from './problem.entity';
 import { User } from './user.entity';
 
 @Entity('tickets')
@@ -88,6 +89,13 @@ export class Ticket {
   @ManyToOne(() => AssetObject, { nullable: true })
   @JoinColumn({ name: 'objectId' })
   object: AssetObject | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  problemId: string | null;
+
+  @ManyToOne(() => Problem, { nullable: true })
+  @JoinColumn({ name: 'problemId' })
+  problem: Problem | null;
 
   @CreateDateColumn()
   createdAt: Date;

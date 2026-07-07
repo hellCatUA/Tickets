@@ -61,6 +61,12 @@ export const router = createRouter({
       meta: { role: Role.Admin },
     },
     {
+      path: '/admin/maintenance',
+      name: 'admin-maintenance',
+      component: () => import('./pages/AdminMaintenancePage.vue'),
+      meta: { role: Role.Admin },
+    },
+    {
       path: '/login',
       name: 'login',
       component: () => import('./pages/LoginPage.vue'),

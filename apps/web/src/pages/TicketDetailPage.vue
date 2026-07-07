@@ -252,6 +252,9 @@ function formatValue(value: unknown): string {
         <div v-if="ticket.locationName">
           <span class="muted">Location</span><span>{{ ticket.locationName }}</span>
         </div>
+        <div v-if="ticket.problemName">
+          <span class="muted">Problem</span><span>{{ ticket.problemName }}</span>
+        </div>
         <div v-if="ticket.objectName">
           <span class="muted">Object</span>
           <span>

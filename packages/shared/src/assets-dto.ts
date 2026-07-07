@@ -1,4 +1,5 @@
 import type { FormField, FormValues } from './forms';
+import type { TicketPriority } from './tickets';
 import type { TicketSummaryDto, UserRefDto } from './tickets-dto';
 
 export interface LocationDto {
@@ -15,6 +16,23 @@ export interface ObjectFamilyDto {
   fields: FormField[];
   /** Category pre-selected when a device of this family is scanned via QR. */
   defaultCategoryId: string | null;
+}
+
+/**
+ * A known symptom/request for a device family ("Paper jam", "Won't power on").
+ * Devices inherit their family's problems; each problem routes to a category.
+ */
+export interface ProblemDto {
+  id: string;
+  familyId: string;
+  familyName: string;
+  name: string;
+  description: string;
+  categoryId: string;
+  /** Overrides the category's default priority when set. */
+  priority: TicketPriority | null;
+  active: boolean;
+  sortOrder: number;
 }
 
 export interface AssetObjectSummaryDto {

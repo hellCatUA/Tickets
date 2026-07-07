@@ -36,15 +36,20 @@ Category      (tree; agent groups, SLA targets, default priority)
 FormSchema    (versioned JSONB per category)
 Location      (tree)
 ObjectFamily  (device category; per-family custom field schema)
+Problem       (per-family symptom: routes to a Category,
+               optional priority override; inherited by the family's devices)
 AssetObject   (belongs to ObjectFamily + Location; serial no, inventory no,
                family fields JSONB; QR token)
 ServiceLogEntry (manual service-history entry on an AssetObject:
                date, description, performed by, cost USD)
 Ticket        (ticket no T-YYYY-NNNN; category, status, priority, requester,
-               assignee/group, location?, object?, form values JSONB)
+               assignee/group, location?, object?, problem?, form values JSONB)
 TicketEvent   (append-only timeline: type, actor, payload, created_at)
 Comment       (public | internal), Attachment
 AutomationRule(condition JSONB, action JSONB, enabled)
+MaintenancePlan (target: family | single object; source: problem | category;
+               interval N days/weeks/months; title template; next/last run;
+               creator becomes the requester of generated tickets)
 Vendor        (company details, payment details)
 BillingRecord (ticket, vendor, SOW, result, price USD, tax?,
                invoice file, approver, approval signature (PNG),

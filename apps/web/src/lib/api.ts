@@ -15,11 +15,13 @@ import type {
   GroupDto,
   LocationDto,
   NotificationListDto,
+  MaintenancePlanDto,
   NotificationPrefsDto,
   ObjectByTokenDto,
   ObjectFamilyDto,
   ObjectHistoryDto,
   PermissionGrantDto,
+  ProblemDto,
   ServiceLogEntryDto,
   RoleMappingDto,
   SyncResultDto,
@@ -111,6 +113,34 @@ export const UsersApi = {
 
 export const DashboardApi = {
   get: () => api<DashboardDto>('/api/dashboard'),
+};
+
+export const ProblemsApi = {
+  list: (familyId?: string, all = false) => {
+    const search = new URLSearchParams();
+    if (familyId) search.set('familyId', familyId);
+    if (all) search.set('all', '1');
+    const qs = search.toString();
+    return api<ProblemDto[]>(`/api/problems${qs ? `?${qs}` : ''}`);
+  },
+  save: (id: string | null, dto: Partial<ProblemDto>) =>
+    api<ProblemDto>(id ? `/api/problems/${id}` : '/api/problems', {
+      method: id ? 'PATCH' : 'POST',
+      body: JSON.stringify(dto),
+    }),
+};
+
+export const MaintenanceApi = {
+  list: () => api<MaintenancePlanDto[]>('/api/admin/maintenance'),
+  save: (id: string | null, dto: Partial<MaintenancePlanDto>) =>
+    api<MaintenancePlanDto>(id ? `/api/admin/maintenance/${id}` : '/api/admin/maintenance', {
+      method: id ? 'PATCH' : 'POST',
+      body: JSON.stringify(dto),
+    }),
+  run: (id: string) =>
+    api<{ created: number; plan: MaintenancePlanDto }>(`/api/admin/maintenance/${id}/run`, {
+      method: 'POST',
+    }),
 };
 
 export const AssetsApi = {

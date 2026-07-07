@@ -61,10 +61,13 @@ independently of the four base roles:
 - Form schemas and submitted values are stored as JSONB — adding
   categories/fields requires no code changes or migrations.
 - Each category can define: assigned agent group(s), default priority, SLA targets.
-- **Category ↔ device link**: a category may be limited to specific object
-  families (empty = applies to anything) and may **require an object** on its
-  tickets; both are validated server-side. A family may set a **default
-  category**, so a QR scan pre-selects both the device and the category.
+- **Category ↔ device link** (bidirectional): a category may be limited to
+  specific object families (empty = applies to anything) and may **require an
+  object** on its tickets; in addition, a family is linked to every category
+  one of its **problems** routes to (see 4.2a). A category applies to a family
+  when either side declares the link; both are validated server-side. A family
+  may set a **default category**, so a QR scan pre-selects both the device and
+  the category.
 
 ### 4.2 Locations and objects
 
@@ -85,6 +88,28 @@ independently of the four base roles:
 - A ticket may reference a location and/or an object.
 - **QR codes**: each object/location gets a printable QR code; scanning it opens
   the new-ticket form with the object/location pre-filled.
+
+### 4.2a Problems (per-family symptom catalog)
+
+- Each object family maintains a list of **problems** — known symptoms or
+  request types for that kind of device ("Paper jam", "Won't power on",
+  "Scheduled service"). Devices inherit their family's problems; per-device
+  customization is a planned extension of the same model.
+- Each problem routes to exactly one **category** (whose form the requester
+  then fills) and may carry an optional **priority override** that beats the
+  category default.
+- Problems are optional: a family without problems keeps the plain
+  device → category flow.
+- New-ticket integration:
+  - after picking a device, its family's problems appear as a **quick-pick
+    list** ("What's wrong with it?"), with "Something else…" falling back to
+    normal category search;
+  - problems are searchable in the omni field directly, so a requester can
+    start from the symptom and pick the device after;
+  - choosing a problem sets the category, pre-fills the title and pins the
+    priority override; the problem is stored on the ticket and shown in its
+    details.
+- Managed from the family editor (requires the manage-objects permission).
 
 ### 4.3 Tickets and lifecycle
 
@@ -117,6 +142,15 @@ independently of the four base roles:
   - "Status = Waiting for Vendor for 7 days → notify billing manager"
 - SLA tracking per category: time-to-first-response and time-to-resolution,
   with breach events on the timeline.
+- **Maintenance plans** (scheduled tickets): a plan targets a whole **family**
+  (one ticket per active device) or a **single device**, and files tickets
+  through a **problem** (category + priority derived from it) or directly
+  through a category. Flexible interval — every N days/weeks/months. Created
+  tickets use a title template with `{name}`/`{serial}`/`{family}`/`{date}`
+  placeholders, are marked automatic on the timeline, and their **requester is
+  the plan's creator**. Due plans run with the 5-minute automation worker;
+  admins can trigger any plan with **Run now**, and the same endpoint is the
+  future hook for external triggers (monitoring, sensors).
 
 ### 4.5 Notifications
 

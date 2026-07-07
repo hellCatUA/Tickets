@@ -184,6 +184,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick));
           <router-link to="/admin/categories">Categories</router-link>
           <router-link to="/admin/access">Access</router-link>
           <router-link to="/admin/automation">Automation</router-link>
+          <router-link to="/admin/maintenance">Maintenance</router-link>
         </template>
         <template v-if="ui.embedded">
           <button class="btn theme-mini" type="button" @click="ui.cycleTheme()">

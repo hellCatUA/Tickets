@@ -9,8 +9,10 @@ import {
   ObjectFamilyDto,
   ObjectHistoryDto,
   Permission,
+  ProblemDto,
   Role,
   ServiceLogEntryDto,
+  TicketPriority,
 } from '@tickets/shared';
 import type { Request } from 'express';
 import { RequirePermissions, RequireRoles } from '../access/decorators';
@@ -78,6 +80,42 @@ export class FamiliesController {
     },
   ): Promise<ObjectFamilyDto> {
     return this.assets.saveFamily(id, dto);
+  }
+}
+
+@Controller('api/problems')
+export class ProblemsController {
+  constructor(private readonly assets: AssetsService) {}
+
+  /** Any authenticated user — powers the omni-search and quick-pick lists. */
+  @Get()
+  list(
+    @Query('familyId') familyId?: string,
+    @Query('all') all?: string,
+  ): Promise<ProblemDto[]> {
+    return this.assets.listProblems(familyId, all === '1');
+  }
+
+  @Post()
+  @RequirePermissions(Permission.ManageObjects)
+  create(
+    @Body()
+    dto: {
+      familyId: string;
+      name: string;
+      description?: string;
+      categoryId: string;
+      priority?: TicketPriority | null;
+      sortOrder?: number;
+    },
+  ): Promise<ProblemDto> {
+    return this.assets.saveProblem(null, dto);
+  }
+
+  @Patch(':id')
+  @RequirePermissions(Permission.ManageObjects)
+  update(@Param('id') id: string, @Body() dto: Record<string, unknown>): Promise<ProblemDto> {
+    return this.assets.saveProblem(id, dto);
   }
 }
 

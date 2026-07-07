@@ -34,6 +34,7 @@ import { Attachment } from '../entities/attachment.entity';
 import { Category } from '../entities/category.entity';
 import { Location } from '../entities/location.entity';
 import { Comment } from '../entities/comment.entity';
+import { Problem } from '../entities/problem.entity';
 import { Ticket } from '../entities/ticket.entity';
 import { TicketEvent } from '../entities/ticket-event.entity';
 import { User } from '../entities/user.entity';
@@ -73,6 +74,7 @@ export class TicketsService {
     @InjectRepository(User) private readonly users: Repository<User>,
     @InjectRepository(Location) private readonly locations: Repository<Location>,
     @InjectRepository(AssetObject) private readonly objects: Repository<AssetObject>,
+    @InjectRepository(Problem) private readonly problems: Repository<Problem>,
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly categories: CategoriesService,
     @Inject(forwardRef(() => TicketsGateway)) private readonly gateway: TicketsGateway,
@@ -152,14 +154,34 @@ export class TicketsService {
   // ---------- commands ----------
 
   /**
-   * Priority precedence: form-value rules (first match) → requester's choice
-   * (only when the category allows it) → the category default.
+   * The category↔family link is bidirectional: a category applies to a family
+   * either when the category lists it explicitly, or when the family has an
+   * active problem routed into that category.
+   */
+  private async categoryAppliesTo(category: Category, familyId: string): Promise<boolean> {
+    if (category.objectFamilies.length === 0) {
+      // Unrestricted category — but check it isn't implicitly restricted at all.
+      return true;
+    }
+    if (category.objectFamilies.includes(familyId)) return true;
+    const viaProblem = await this.problems.findOne({
+      where: { familyId, categoryId: category.id, active: true },
+    });
+    return viaProblem !== null;
+  }
+
+  /**
+   * Priority precedence: form-value rules (first match) → the problem's own
+   * priority → requester's choice (only when the category allows it) → the
+   * category default.
    */
   private resolvePriority(
     category: Category,
     fields: FormField[],
     dto: CreateTicketDto,
     formValues: FormValues,
+    problem: Problem | null,
+    forced?: TicketPriority | null,
   ): TicketPriority {
     for (const rule of category.priorityRules ?? []) {
       if (!fields.some((f) => f.key === rule.field)) continue;
@@ -169,6 +191,8 @@ export class TicketsService {
         : String(value) === String(rule.equals);
       if (matches) return rule.priority;
     }
+    if (forced && Object.values(TicketPriority).includes(forced)) return forced;
+    if (problem?.priority) return problem.priority;
     if (
       category.allowRequesterPriority &&
       dto.priority &&
@@ -179,24 +203,42 @@ export class TicketsService {
     return category.defaultPriority;
   }
 
-  async create(me: MeDto, dto: CreateTicketDto): Promise<TicketDetailDto> {
+  async create(
+    me: MeDto,
+    dto: CreateTicketDto,
+    opts?: { forcePriority?: TicketPriority | null; eventExtra?: Record<string, unknown> },
+  ): Promise<TicketDetailDto> {
     if (!dto.title?.trim()) throw new BadRequestException('Title is required');
     const { category, schema } = await this.categories.getCategoryWithSchema(dto.categoryId);
     if (!category.active) throw new BadRequestException('Category is not active');
     const formValues = dto.formValues ?? {};
     const errors = validateFormValues(schema.fields, formValues);
     if (errors.length > 0) throw new BadRequestException(errors.join('; '));
-    const priority = this.resolvePriority(category, schema.fields, dto, formValues);
 
     let locationId = dto.locationId ?? null;
     const objectId = dto.objectId ?? null;
     if (category.objectRequired && !objectId) {
       throw new BadRequestException('This category requires selecting an object/device');
     }
+
+    // A problem implies its category and needs a device of its family.
+    let problem: Problem | null = null;
+    if (dto.problemId) {
+      problem = await this.problems.findOne({ where: { id: dto.problemId, active: true } });
+      if (!problem) throw new BadRequestException('Unknown problem');
+      if (problem.categoryId !== category.id) {
+        throw new BadRequestException('The problem belongs to a different category');
+      }
+      if (!objectId) throw new BadRequestException('This problem requires selecting a device');
+    }
+
     if (objectId) {
       const object = await this.objects.findOne({ where: { id: objectId, active: true } });
       if (!object) throw new BadRequestException('Unknown object');
-      if (category.objectFamilies.length > 0 && !category.objectFamilies.includes(object.familyId)) {
+      if (problem && object.familyId !== problem.familyId) {
+        throw new BadRequestException('That device does not have this problem in its list');
+      }
+      if (!(await this.categoryAppliesTo(category, object.familyId))) {
         throw new BadRequestException('This category does not apply to that device type');
       }
       // The object's own location wins when none was picked explicitly.
@@ -205,6 +247,14 @@ export class TicketsService {
     if (locationId && !(await this.locations.findOne({ where: { id: locationId } }))) {
       throw new BadRequestException('Unknown location');
     }
+    const priority = this.resolvePriority(
+      category,
+      schema.fields,
+      dto,
+      formValues,
+      problem,
+      opts?.forcePriority,
+    );
 
     const ticket = await this.dataSource.transaction(async (em) => {
       const year = new Date().getFullYear();
@@ -229,6 +279,7 @@ export class TicketsService {
           formValues,
           locationId,
           objectId,
+          problemId: problem?.id ?? null,
         }),
       );
       await em.save(
@@ -236,7 +287,7 @@ export class TicketsService {
           ticketId: created.id,
           type: 'created',
           actorId: me.id,
-          payload: { ticketNo: created.ticketNo },
+          payload: { ticketNo: created.ticketNo, ...(opts?.eventExtra ?? {}) },
         }),
       );
       return created;
@@ -254,7 +305,8 @@ export class TicketsService {
       .leftJoinAndSelect('t.assignee', 'assignee')
       .leftJoinAndSelect('t.category', 'category')
       .leftJoinAndSelect('t.location', 'location')
-      .leftJoinAndSelect('t.object', 'object');
+      .leftJoinAndSelect('t.object', 'object')
+      .leftJoinAndSelect('t.problem', 'problem');
 
     if (filters.status) qb.andWhere('t.status = :status', { status: filters.status });
     if (filters.categoryId) qb.andWhere('t.categoryId = :cat', { cat: filters.categoryId });
@@ -340,7 +392,14 @@ export class TicketsService {
   async getDetail(me: MeDto, id: string): Promise<TicketDetailDto> {
     const ticket = await this.tickets.findOne({
       where: { id },
-      relations: { requester: true, assignee: true, category: true, location: true, object: true },
+      relations: {
+        requester: true,
+        assignee: true,
+        category: true,
+        location: true,
+        object: true,
+        problem: true,
+      },
     });
     if (!ticket || !(await this.canView(me, ticket))) {
       throw new NotFoundException('Ticket not found');
@@ -470,9 +529,9 @@ export class TicketsService {
     if (category.objectRequired && !ticket.objectId) {
       throw new BadRequestException('That category requires an object — attach a device first');
     }
-    if (ticket.objectId && category.objectFamilies.length > 0) {
+    if (ticket.objectId) {
       const object = await this.objects.findOne({ where: { id: ticket.objectId } });
-      if (object && !category.objectFamilies.includes(object.familyId)) {
+      if (object && !(await this.categoryAppliesTo(category, object.familyId))) {
         throw new BadRequestException(
           'That category does not apply to the attached device — change the device first',
         );
@@ -480,6 +539,11 @@ export class TicketsService {
     }
     const previous = await this.categories.getCategoryWithSchema(ticket.categoryId);
     const fromName = previous.category.name;
+    // The picked problem no longer matches once the ticket moves elsewhere.
+    if (ticket.problemId) {
+      const problem = await this.problems.findOne({ where: { id: ticket.problemId } });
+      if (problem && problem.categoryId !== category.id) ticket.problemId = null;
+    }
     ticket.categoryId = category.id;
     // Adopt the new category's current form; matching keys keep their values.
     ticket.formSchemaId = schema.id;
@@ -503,11 +567,13 @@ export class TicketsService {
     if (objectId) {
       const object = await this.objects.findOne({ where: { id: objectId, active: true } });
       if (!object) throw new BadRequestException('Unknown object');
-      if (
-        category.objectFamilies.length > 0 &&
-        !category.objectFamilies.includes(object.familyId)
-      ) {
+      if (!(await this.categoryAppliesTo(category, object.familyId))) {
         throw new BadRequestException("The ticket's category does not apply to that device type");
+      }
+      // Drop the picked problem when the new device's family doesn't have it.
+      if (ticket.problemId) {
+        const problem = await this.problems.findOne({ where: { id: ticket.problemId } });
+        if (problem && problem.familyId !== object.familyId) ticket.problemId = null;
       }
       toName = object.name;
       ticket.objectId = objectId;
@@ -518,6 +584,7 @@ export class TicketsService {
         throw new BadRequestException("The ticket's category requires an object");
       }
       ticket.objectId = null;
+      ticket.problemId = null;
     }
     await this.tickets.save(ticket);
     await this.addEvent(id, 'object_changed', me.id, { from: previous?.name ?? null, to: toName });
@@ -617,6 +684,8 @@ export class TicketsService {
       locationName: t.location?.name ?? null,
       objectId: t.objectId ?? null,
       objectName: t.object?.name ?? null,
+      problemId: t.problemId ?? null,
+      problemName: t.problem?.name ?? null,
       createdAt: t.createdAt.toISOString(),
       updatedAt: t.updatedAt.toISOString(),
     };

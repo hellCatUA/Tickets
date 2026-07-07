@@ -9,15 +9,19 @@ import {
   ObjectByTokenDto,
   ObjectFamilyDto,
   ObjectHistoryDto,
+  ProblemDto,
   ServiceLogEntryDto,
+  TicketPriority,
   validateFormFields,
   validateFormValues,
 } from '@tickets/shared';
 import { randomBytes } from 'node:crypto';
 import { Repository } from 'typeorm';
 import { AssetObject } from '../entities/asset-object.entity';
+import { Category } from '../entities/category.entity';
 import { Location } from '../entities/location.entity';
 import { ObjectFamily } from '../entities/object-family.entity';
+import { Problem } from '../entities/problem.entity';
 import { ServiceLogEntry } from '../entities/service-log-entry.entity';
 import { Ticket } from '../entities/ticket.entity';
 import { User } from '../entities/user.entity';
@@ -31,7 +35,91 @@ export class AssetsService {
     @InjectRepository(ServiceLogEntry) private readonly serviceLog: Repository<ServiceLogEntry>,
     @InjectRepository(Ticket) private readonly tickets: Repository<Ticket>,
     @InjectRepository(User) private readonly users: Repository<User>,
+    @InjectRepository(Problem) private readonly problems: Repository<Problem>,
+    @InjectRepository(Category) private readonly categories: Repository<Category>,
   ) {}
+
+  // ---------- problems ----------
+
+  async listProblems(familyId?: string, includeInactive = false): Promise<ProblemDto[]> {
+    const qb = this.problems
+      .createQueryBuilder('p')
+      .leftJoinAndSelect('p.family', 'family')
+      .orderBy('p.sortOrder', 'ASC')
+      .addOrderBy('p.name', 'ASC');
+    if (!includeInactive) qb.andWhere('p.active = true');
+    if (familyId) qb.andWhere('p.familyId = :familyId', { familyId });
+    const rows = await qb.getMany();
+    return rows.map((p) => this.toProblemDto(p));
+  }
+
+  async saveProblem(
+    id: string | null,
+    dto: {
+      familyId?: string;
+      name?: string;
+      description?: string;
+      categoryId?: string;
+      priority?: TicketPriority | null;
+      active?: boolean;
+      sortOrder?: number;
+    },
+  ): Promise<ProblemDto> {
+    let problem = id
+      ? await this.problems.findOne({ where: { id }, relations: { family: true } })
+      : null;
+    if (id && !problem) throw new NotFoundException('Problem not found');
+    const categoryId = dto.categoryId ?? problem?.categoryId;
+    if (categoryId && !(await this.categories.findOne({ where: { id: categoryId } }))) {
+      throw new BadRequestException('Unknown category');
+    }
+    if (
+      dto.priority !== undefined &&
+      dto.priority !== null &&
+      !Object.values(TicketPriority).includes(dto.priority)
+    ) {
+      throw new BadRequestException('Unknown priority');
+    }
+    if (!problem) {
+      if (!dto.familyId || !(await this.families.findOne({ where: { id: dto.familyId } }))) {
+        throw new BadRequestException('Unknown family');
+      }
+      if (!dto.name?.trim()) throw new BadRequestException('Name is required');
+      if (!categoryId) throw new BadRequestException('Category is required');
+      problem = this.problems.create({
+        familyId: dto.familyId,
+        name: dto.name.trim(),
+        description: dto.description ?? '',
+        categoryId,
+        priority: dto.priority ?? null,
+        sortOrder: dto.sortOrder ?? 0,
+      });
+    } else {
+      if (dto.name !== undefined) problem.name = dto.name.trim() || problem.name;
+      if (dto.description !== undefined) problem.description = dto.description;
+      if (categoryId) problem.categoryId = categoryId;
+      if (dto.priority !== undefined) problem.priority = dto.priority;
+      if (dto.active !== undefined) problem.active = dto.active;
+      if (dto.sortOrder !== undefined) problem.sortOrder = dto.sortOrder;
+    }
+    const saved = await this.problems.save(problem);
+    saved.family ??= (await this.families.findOne({ where: { id: saved.familyId } }))!;
+    return this.toProblemDto(saved);
+  }
+
+  private toProblemDto(p: Problem): ProblemDto {
+    return {
+      id: p.id,
+      familyId: p.familyId,
+      familyName: p.family?.name ?? '',
+      name: p.name,
+      description: p.description,
+      categoryId: p.categoryId,
+      priority: p.priority,
+      active: p.active,
+      sortOrder: p.sortOrder,
+    };
+  }
 
   // ---------- locations ----------
 
@@ -264,6 +352,8 @@ export class AssetsService {
         locationName: null,
         objectId: t.objectId,
         objectName: null,
+        problemId: t.problemId ?? null,
+        problemName: null,
         createdAt: t.createdAt.toISOString(),
         updatedAt: t.updatedAt.toISOString(),
       })),

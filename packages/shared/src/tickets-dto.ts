@@ -56,6 +56,8 @@ export interface CreateTicketDto {
   formValues?: FormValues;
   locationId?: string | null;
   objectId?: string | null;
+  /** Family problem the requester picked; implies the category and needs a device. */
+  problemId?: string | null;
 }
 
 export interface TicketSummaryDto {
@@ -72,6 +74,8 @@ export interface TicketSummaryDto {
   locationName: string | null;
   objectId: string | null;
   objectName: string | null;
+  problemId: string | null;
+  problemName: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -169,6 +173,32 @@ export interface AutomationRuleDto {
 export interface AutomationRunResultDto {
   closed: number;
   escalated: number;
+  maintenanceCreated: number;
+}
+
+export type MaintenanceIntervalUnit = 'days' | 'weeks' | 'months';
+
+export interface MaintenancePlanDto {
+  id: string;
+  name: string;
+  active: boolean;
+  /** Target: a whole family (every active device) or one specific device. */
+  familyId: string | null;
+  familyName: string | null;
+  objectId: string | null;
+  objectName: string | null;
+  /** What to file: a family problem (implies category) or a bare category. */
+  problemId: string | null;
+  problemName: string | null;
+  categoryId: string | null;
+  titleTemplate: string;
+  description: string;
+  priority: TicketPriority | null;
+  intervalValue: number;
+  intervalUnit: MaintenanceIntervalUnit;
+  nextDueAt: string;
+  lastRunAt: string | null;
+  createdBy: UserRefDto | null;
 }
 
 export interface TicketDetailDto extends TicketSummaryDto {

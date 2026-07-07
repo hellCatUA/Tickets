@@ -1,8 +1,15 @@
 <script setup lang="ts">
-import { CategoryDto, FormField, ObjectFamilyDto, Permission } from '@tickets/shared';
+import {
+  CategoryDto,
+  FormField,
+  ObjectFamilyDto,
+  Permission,
+  ProblemDto,
+  TICKET_PRIORITY_LABELS,
+} from '@tickets/shared';
 import { computed, onMounted, ref } from 'vue';
 import FormBuilder from '../components/FormBuilder.vue';
-import { AssetsApi, CategoriesApi } from '../lib/api';
+import { AssetsApi, CategoriesApi, ProblemsApi } from '../lib/api';
 import { useAuthStore } from '../stores/auth';
 
 const auth = useAuthStore();
@@ -16,8 +23,45 @@ const name = ref('');
 const description = ref('');
 const defaultCategoryId = ref<string | null>(null);
 const fields = ref<FormField[]>([]);
+const problems = ref<Array<Partial<ProblemDto>>>([]);
 const error = ref('');
 const notice = ref('');
+
+function addProblem(): void {
+  problems.value.push({
+    name: '',
+    categoryId: categories.value[0]?.id ?? '',
+    priority: null,
+    active: true,
+  });
+}
+
+async function loadProblems(familyId: string): Promise<void> {
+  problems.value = await ProblemsApi.list(familyId, true).catch(() => []);
+}
+
+async function saveProblems(): Promise<void> {
+  if (!selectedId.value) return;
+  error.value = '';
+  try {
+    for (const p of problems.value) {
+      if (!p.name?.trim()) continue;
+      await ProblemsApi.save(p.id ?? null, {
+        ...p,
+        familyId: selectedId.value,
+      });
+    }
+    await loadProblems(selectedId.value);
+    flash('Problems saved.');
+  } catch (err) {
+    error.value = (err as Error).message;
+  }
+}
+
+function flash(message: string): void {
+  notice.value = message;
+  setTimeout(() => (notice.value = ''), 4000);
+}
 
 function select(family: ObjectFamilyDto | null): void {
   isNew.value = family === null;
@@ -26,6 +70,8 @@ function select(family: ObjectFamilyDto | null): void {
   description.value = family?.description ?? '';
   defaultCategoryId.value = family?.defaultCategoryId ?? null;
   fields.value = JSON.parse(JSON.stringify(family?.fields ?? [])) as FormField[];
+  problems.value = [];
+  if (family) void loadProblems(family.id);
   error.value = '';
   notice.value = '';
 }
@@ -50,8 +96,7 @@ async function save(): Promise<void> {
       defaultCategoryId: defaultCategoryId.value,
     });
     await reload(saved.id);
-    notice.value = 'Family saved.';
-    setTimeout(() => (notice.value = ''), 4000);
+    flash('Family saved.');
   } catch (err) {
     error.value = (err as Error).message;
   }
@@ -110,6 +155,43 @@ async function save(): Promise<void> {
             {{ isNew ? 'Create family' : 'Save family' }}
           </button>
         </div>
+
+        <div v-if="!isNew" class="problems-block">
+          <label class="mini">
+            Problems — known symptoms/requests for this family; each routes into a category
+          </label>
+          <p v-if="problems.length === 0" class="muted small">
+            No problems yet — devices of this family will fall back to plain category picking.
+          </p>
+          <div v-for="(p, i) in problems" :key="p.id ?? i" class="problem-row">
+            <input
+              v-model="p.name"
+              type="text"
+              placeholder="e.g. Paper jam"
+              :disabled="!canManage"
+            />
+            <select v-model="p.categoryId" :disabled="!canManage">
+              <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
+            </select>
+            <select v-model="p.priority" :disabled="!canManage">
+              <option :value="null">— category default —</option>
+              <option v-for="(l, value) in TICKET_PRIORITY_LABELS" :key="value" :value="value">
+                {{ l }}
+              </option>
+            </select>
+            <label class="check">
+              <input v-model="p.active" type="checkbox" :disabled="!canManage" />
+              Active
+            </label>
+          </div>
+          <div v-if="canManage" class="actions">
+            <button class="btn" type="button" @click="addProblem">+ Add problem</button>
+            <button class="btn btn-primary" type="button" @click="saveProblems">
+              Save problems
+            </button>
+          </div>
+        </div>
+
         <p v-if="error" class="error-text">{{ error }}</p>
         <p v-if="notice" class="notice">{{ notice }}</p>
       </div>
@@ -204,6 +286,32 @@ async function save(): Promise<void> {
 .notice {
   color: #2ea05a;
   font-size: 0.9rem;
+}
+
+.problems-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+}
+
+.problem-row {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr auto;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.small {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+@media (max-width: 800px) {
+  .problem-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 .empty {

@@ -13,6 +13,7 @@ import { Ticket } from '../entities/ticket.entity';
 import { TicketEvent } from '../entities/ticket-event.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { TicketsGateway } from '../tickets/tickets.gateway';
+import { MaintenanceService } from './maintenance.service';
 
 const RULE_TYPES: AutomationRuleType[] = ['auto_close_resolved', 'escalate_unassigned'];
 const DEFAULT_PARAMS: Record<AutomationRuleType, Record<string, number>> = {
@@ -31,6 +32,7 @@ export class AutomationService {
     @InjectRepository(TicketEvent) private readonly events: Repository<TicketEvent>,
     private readonly notifications: NotificationsService,
     @Inject(forwardRef(() => TicketsGateway)) private readonly gateway: TicketsGateway,
+    private readonly maintenance: MaintenanceService,
   ) {}
 
   async listRules(): Promise<AutomationRuleDto[]> {
@@ -71,7 +73,7 @@ export class AutomationService {
 
   /** Evaluates all enabled rules once. Also exposed via POST /api/admin/automation/run. */
   async run(): Promise<AutomationRunResultDto> {
-    if (this.running) return { closed: 0, escalated: 0 };
+    if (this.running) return { closed: 0, escalated: 0, maintenanceCreated: 0 };
     this.running = true;
     try {
       const rules = await this.listRules();
@@ -82,10 +84,13 @@ export class AutomationService {
         if (rule.type === 'auto_close_resolved') closed = await this.autoCloseResolved(rule.params.days);
         if (rule.type === 'escalate_unassigned') escalated = await this.escalateUnassigned(rule.params.hours);
       }
-      if (closed || escalated) {
-        this.logger.log(`Automation: closed ${closed}, escalated ${escalated}`);
+      const maintenanceCreated = await this.maintenance.runDue();
+      if (closed || escalated || maintenanceCreated) {
+        this.logger.log(
+          `Automation: closed ${closed}, escalated ${escalated}, maintenance ${maintenanceCreated}`,
+        );
       }
-      return { closed, escalated };
+      return { closed, escalated, maintenanceCreated };
     } finally {
       this.running = false;
     }
