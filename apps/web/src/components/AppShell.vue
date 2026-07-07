@@ -14,6 +14,11 @@ const router = useRouter();
 
 const isAdmin = computed(() => auth.roles.includes(Role.Admin));
 const isTicketsSection = computed(() => String(route.path).startsWith('/tickets'));
+const showAssets = computed(
+  () =>
+    auth.roles.includes(Role.Agent) ||
+    (auth.me?.permissions ?? []).some((p) => p === 'manage:objects' || p === 'manage:locations'),
+);
 
 const menuOpen = ref(false);
 const menuRef = ref<HTMLElement | null>(null);
@@ -168,6 +173,12 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick));
           Tickets
         </router-link>
         <router-link to="/tickets/new" class="new-ticket">+ New ticket</router-link>
+        <template v-if="showAssets">
+          <span class="nav-section">Assets</span>
+          <router-link to="/assets/objects">Objects</router-link>
+          <router-link to="/assets/locations">Locations</router-link>
+          <router-link to="/assets/families">Families</router-link>
+        </template>
         <template v-if="isAdmin">
           <span class="nav-section">Admin</span>
           <router-link to="/admin/categories">Categories</router-link>

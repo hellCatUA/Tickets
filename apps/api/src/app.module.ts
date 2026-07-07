@@ -11,6 +11,7 @@ import { RolesGuard } from './access/roles.guard';
 import { AdminModule } from './admin/admin.module';
 import { AuthModule } from './auth/auth.module';
 import { BrandingModule } from './branding/branding.module';
+import { AssetsModule } from './assets/assets.module';
 import { AutomationModule } from './automation/automation.module';
 import { CategoriesModule } from './categories/categories.module';
 import { NotificationsModule } from './notifications/notifications.module';
@@ -55,6 +56,7 @@ const publicDir = join(__dirname, '..', 'public');
     TicketsModule,
     NotificationsModule,
     AutomationModule,
+    AssetsModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: RolesGuard }],

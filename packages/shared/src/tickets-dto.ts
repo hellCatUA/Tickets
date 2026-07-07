@@ -48,6 +48,8 @@ export interface CreateTicketDto {
   description?: string;
   priority?: TicketPriority;
   formValues?: FormValues;
+  locationId?: string | null;
+  objectId?: string | null;
 }
 
 export interface TicketSummaryDto {
@@ -60,6 +62,10 @@ export interface TicketSummaryDto {
   categoryName: string;
   requester: UserRefDto;
   assignee: UserRefDto | null;
+  locationId: string | null;
+  locationName: string | null;
+  objectId: string | null;
+  objectName: string | null;
   createdAt: string;
   updatedAt: string;
 }

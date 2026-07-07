@@ -2,7 +2,9 @@ import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CategoriesModule } from '../categories/categories.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { AssetObject } from '../entities/asset-object.entity';
 import { Attachment } from '../entities/attachment.entity';
+import { Location } from '../entities/location.entity';
 import { Comment } from '../entities/comment.entity';
 import { Ticket } from '../entities/ticket.entity';
 import { TicketCounter } from '../entities/ticket-counter.entity';
@@ -14,7 +16,16 @@ import { TicketsService } from './tickets.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Ticket, TicketEvent, Comment, Attachment, TicketCounter, User]),
+    TypeOrmModule.forFeature([
+      Ticket,
+      TicketEvent,
+      Comment,
+      Attachment,
+      TicketCounter,
+      User,
+      Location,
+      AssetObject,
+    ]),
     CategoriesModule,
     forwardRef(() => NotificationsModule),
   ],

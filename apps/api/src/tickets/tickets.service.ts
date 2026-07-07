@@ -29,8 +29,10 @@ import {
 } from '@tickets/shared';
 import { Brackets, DataSource, In, Repository, SelectQueryBuilder } from 'typeorm';
 import { CategoriesService } from '../categories/categories.service';
+import { AssetObject } from '../entities/asset-object.entity';
 import { Attachment } from '../entities/attachment.entity';
 import { Category } from '../entities/category.entity';
+import { Location } from '../entities/location.entity';
 import { Comment } from '../entities/comment.entity';
 import { Ticket } from '../entities/ticket.entity';
 import { TicketEvent } from '../entities/ticket-event.entity';
@@ -69,6 +71,8 @@ export class TicketsService {
     @InjectRepository(Comment) private readonly comments: Repository<Comment>,
     @InjectRepository(Attachment) private readonly attachments: Repository<Attachment>,
     @InjectRepository(User) private readonly users: Repository<User>,
+    @InjectRepository(Location) private readonly locations: Repository<Location>,
+    @InjectRepository(AssetObject) private readonly objects: Repository<AssetObject>,
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly categories: CategoriesService,
     @Inject(forwardRef(() => TicketsGateway)) private readonly gateway: TicketsGateway,
@@ -184,6 +188,18 @@ export class TicketsService {
     if (errors.length > 0) throw new BadRequestException(errors.join('; '));
     const priority = this.resolvePriority(category, schema.fields, dto, formValues);
 
+    let locationId = dto.locationId ?? null;
+    const objectId = dto.objectId ?? null;
+    if (objectId) {
+      const object = await this.objects.findOne({ where: { id: objectId, active: true } });
+      if (!object) throw new BadRequestException('Unknown object');
+      // The object's own location wins when none was picked explicitly.
+      if (!locationId) locationId = object.locationId;
+    }
+    if (locationId && !(await this.locations.findOne({ where: { id: locationId } }))) {
+      throw new BadRequestException('Unknown location');
+    }
+
     const ticket = await this.dataSource.transaction(async (em) => {
       const year = new Date().getFullYear();
       const [counter]: Array<{ seq: number }> = await em.query(
@@ -205,6 +221,8 @@ export class TicketsService {
           priority,
           requesterId: me.id,
           formValues,
+          locationId,
+          objectId,
         }),
       );
       await em.save(
@@ -228,7 +246,9 @@ export class TicketsService {
     const qb = (await this.scopedQb(me))
       .leftJoinAndSelect('t.requester', 'requester')
       .leftJoinAndSelect('t.assignee', 'assignee')
-      .leftJoinAndSelect('t.category', 'category');
+      .leftJoinAndSelect('t.category', 'category')
+      .leftJoinAndSelect('t.location', 'location')
+      .leftJoinAndSelect('t.object', 'object');
 
     if (filters.status) qb.andWhere('t.status = :status', { status: filters.status });
     if (filters.categoryId) qb.andWhere('t.categoryId = :cat', { cat: filters.categoryId });
@@ -314,7 +334,7 @@ export class TicketsService {
   async getDetail(me: MeDto, id: string): Promise<TicketDetailDto> {
     const ticket = await this.tickets.findOne({
       where: { id },
-      relations: { requester: true, assignee: true, category: true },
+      relations: { requester: true, assignee: true, category: true, location: true, object: true },
     });
     if (!ticket || !(await this.canView(me, ticket))) {
       throw new NotFoundException('Ticket not found');
@@ -525,6 +545,10 @@ export class TicketsService {
       categoryName: t.category?.name ?? '',
       requester: this.toUserRef(t.requester) ?? { id: t.requesterId, displayName: '?' },
       assignee: this.toUserRef(t.assignee),
+      locationId: t.locationId ?? null,
+      locationName: t.location?.name ?? null,
+      objectId: t.objectId ?? null,
+      objectName: t.object?.name ?? null,
       createdAt: t.createdAt.toISOString(),
       updatedAt: t.updatedAt.toISOString(),
     };

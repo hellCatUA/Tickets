@@ -9,7 +9,9 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { AssetObject } from './asset-object.entity';
 import { Category } from './category.entity';
+import { Location } from './location.entity';
 import { User } from './user.entity';
 
 @Entity('tickets')
@@ -70,6 +72,22 @@ export class Ticket {
 
   @Column({ type: 'jsonb', default: () => "'{}'" })
   formValues: FormValues;
+
+  @Index()
+  @Column({ type: 'uuid', nullable: true })
+  locationId: string | null;
+
+  @ManyToOne(() => Location, { nullable: true })
+  @JoinColumn({ name: 'locationId' })
+  location: Location | null;
+
+  @Index()
+  @Column({ type: 'uuid', nullable: true })
+  objectId: string | null;
+
+  @ManyToOne(() => AssetObject, { nullable: true })
+  @JoinColumn({ name: 'objectId' })
+  object: AssetObject | null;
 
   @CreateDateColumn()
   createdAt: Date;

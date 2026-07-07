@@ -24,6 +24,26 @@ export const router = createRouter({
       meta: { role: Role.Admin },
     },
     {
+      path: '/assets/locations',
+      name: 'assets-locations',
+      component: () => import('./pages/AssetsLocationsPage.vue'),
+    },
+    {
+      path: '/assets/families',
+      name: 'assets-families',
+      component: () => import('./pages/AssetsFamiliesPage.vue'),
+    },
+    {
+      path: '/assets/objects',
+      name: 'assets-objects',
+      component: () => import('./pages/AssetsObjectsPage.vue'),
+    },
+    {
+      path: '/assets/objects/:id',
+      name: 'object-detail',
+      component: () => import('./pages/ObjectDetailPage.vue'),
+    },
+    {
       path: '/settings/notifications',
       name: 'notification-settings',
       component: () => import('./pages/NotificationSettingsPage.vue'),

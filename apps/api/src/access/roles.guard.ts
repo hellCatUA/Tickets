@@ -6,10 +6,10 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import type { Role } from '@tickets/shared';
+import type { Permission, Role } from '@tickets/shared';
 import type { Request } from 'express';
 import { AccessService } from './access.service';
-import { IS_PUBLIC_KEY, ROLES_KEY } from './decorators';
+import { IS_PUBLIC_KEY, PERMISSIONS_KEY, ROLES_KEY } from './decorators';
 
 /** Global guard: requires a session for every route unless @Public(), plus roles from @RequireRoles(). */
 @Injectable()
@@ -27,11 +27,17 @@ export class RolesGuard implements CanActivate {
     const userId = req.session?.userId;
     if (!userId) throw new UnauthorizedException();
 
-    const required = this.reflector.getAllAndOverride<Role[]>(ROLES_KEY, targets);
-    if (!required || required.length === 0) return true;
+    const requiredRoles = this.reflector.getAllAndOverride<Role[]>(ROLES_KEY, targets);
+    const requiredPerms = this.reflector.getAllAndOverride<Permission[]>(PERMISSIONS_KEY, targets);
+    if (!requiredRoles?.length && !requiredPerms?.length) return true;
 
     const me = await this.access.getMe(userId);
-    if (required.some((role) => me.roles.includes(role))) return true;
-    throw new ForbiddenException('Insufficient role');
+    if (requiredRoles?.length && !requiredRoles.some((role) => me.roles.includes(role))) {
+      throw new ForbiddenException('Insufficient role');
+    }
+    if (requiredPerms?.length && !requiredPerms.some((p) => me.permissions.includes(p))) {
+      throw new ForbiddenException('Missing permission');
+    }
+    return true;
   }
 }

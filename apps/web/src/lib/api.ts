@@ -1,4 +1,6 @@
 import type {
+  AssetObjectDto,
+  AssetObjectSummaryDto,
   AttachmentDto,
   AutomationRuleDto,
   AutomationRunResultDto,
@@ -9,10 +11,16 @@ import type {
   CreateTicketDto,
   DashboardDto,
   FormField,
+  FormValues,
   GroupDto,
+  LocationDto,
   NotificationListDto,
   NotificationPrefsDto,
+  ObjectByTokenDto,
+  ObjectFamilyDto,
+  ObjectHistoryDto,
   PermissionGrantDto,
+  ServiceLogEntryDto,
   RoleMappingDto,
   SyncResultDto,
   TicketDetailDto,
@@ -93,6 +101,58 @@ export const UsersApi = {
 
 export const DashboardApi = {
   get: () => api<DashboardDto>('/api/dashboard'),
+};
+
+export const AssetsApi = {
+  locations: (all = false) => api<LocationDto[]>(`/api/locations${all ? '?all=1' : ''}`),
+  saveLocation: (id: string | null, dto: Partial<LocationDto>) =>
+    api<LocationDto>(id ? `/api/locations/${id}` : '/api/locations', {
+      method: id ? 'PATCH' : 'POST',
+      body: JSON.stringify(dto),
+    }),
+  families: () => api<ObjectFamilyDto[]>('/api/object-families'),
+  saveFamily: (id: string | null, dto: { name?: string; description?: string; fields?: FormField[] }) =>
+    api<ObjectFamilyDto>(id ? `/api/object-families/${id}` : '/api/object-families', {
+      method: id ? 'PATCH' : 'POST',
+      body: JSON.stringify(dto),
+    }),
+  objects: (filters: { familyId?: string; locationId?: string; q?: string; all?: boolean } = {}) => {
+    const search = new URLSearchParams();
+    if (filters.familyId) search.set('familyId', filters.familyId);
+    if (filters.locationId) search.set('locationId', filters.locationId);
+    if (filters.q) search.set('q', filters.q);
+    if (filters.all) search.set('all', '1');
+    const qs = search.toString();
+    return api<AssetObjectSummaryDto[]>(`/api/objects${qs ? `?${qs}` : ''}`);
+  },
+  object: (id: string) => api<AssetObjectDto>(`/api/objects/${id}`),
+  objectByToken: (token: string) =>
+    api<ObjectByTokenDto>(`/api/objects/by-token/${encodeURIComponent(token)}`),
+  saveObject: (
+    id: string | null,
+    dto: {
+      name?: string;
+      familyId?: string;
+      locationId?: string | null;
+      serialNo?: string;
+      inventoryNo?: string;
+      fields?: FormValues;
+      active?: boolean;
+    },
+  ) =>
+    api<AssetObjectDto>(id ? `/api/objects/${id}` : '/api/objects', {
+      method: id ? 'PATCH' : 'POST',
+      body: JSON.stringify(dto),
+    }),
+  history: (id: string) => api<ObjectHistoryDto>(`/api/objects/${id}/history`),
+  addServiceEntry: (
+    id: string,
+    dto: { date?: string; description: string; performedBy?: string; cost?: number },
+  ) =>
+    api<ServiceLogEntryDto>(`/api/objects/${id}/service-log`, {
+      method: 'POST',
+      body: JSON.stringify(dto),
+    }),
 };
 
 export const AdminApi = {

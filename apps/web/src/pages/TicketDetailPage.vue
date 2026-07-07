@@ -211,6 +211,18 @@ function formatValue(value: unknown): string {
       <div class="meta card">
         <div><span class="muted">Requester</span><span>{{ ticket.requester.displayName }}</span></div>
         <div><span class="muted">Assignee</span><span>{{ ticket.assignee?.displayName ?? '—' }}</span></div>
+        <div v-if="ticket.locationName">
+          <span class="muted">Location</span><span>{{ ticket.locationName }}</span>
+        </div>
+        <div v-if="ticket.objectName">
+          <span class="muted">Object</span>
+          <span>
+            <router-link v-if="ticket.canManage" :to="`/assets/objects/${ticket.objectId}`">
+              {{ ticket.objectName }}
+            </router-link>
+            <template v-else>{{ ticket.objectName }}</template>
+          </span>
+        </div>
         <div><span class="muted">Created</span><span>{{ formatDate(ticket.createdAt) }}</span></div>
         <div><span class="muted">Updated</span><span>{{ formatDate(ticket.updatedAt) }}</span></div>
       </div>
