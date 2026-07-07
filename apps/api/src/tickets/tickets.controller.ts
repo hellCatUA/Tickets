@@ -101,6 +101,24 @@ export class TicketsController {
     return this.tickets.assign(await this.me(req), id, body.assigneeId ?? null);
   }
 
+  @Patch(':id/category')
+  async category(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Body() body: { categoryId: string },
+  ): Promise<TicketDetailDto> {
+    return this.tickets.changeCategory(await this.me(req), id, body.categoryId);
+  }
+
+  @Patch(':id/object')
+  async object(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Body() body: { objectId: string | null },
+  ): Promise<TicketDetailDto> {
+    return this.tickets.changeObject(await this.me(req), id, body.objectId ?? null);
+  }
+
   @Patch(':id/priority')
   async priority(
     @Req() req: Request,

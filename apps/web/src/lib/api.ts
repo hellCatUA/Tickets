@@ -83,6 +83,16 @@ export const TicketsApi = {
       method: 'PATCH',
       body: JSON.stringify({ priority }),
     }),
+  setCategory: (id: string, categoryId: string) =>
+    api<TicketDetailDto>(`/api/tickets/${id}/category`, {
+      method: 'PATCH',
+      body: JSON.stringify({ categoryId }),
+    }),
+  setObject: (id: string, objectId: string | null) =>
+    api<TicketDetailDto>(`/api/tickets/${id}/object`, {
+      method: 'PATCH',
+      body: JSON.stringify({ objectId }),
+    }),
   comment: (id: string, body: string, internal: boolean) =>
     api<CommentDto>(`/api/tickets/${id}/comments`, {
       method: 'POST',

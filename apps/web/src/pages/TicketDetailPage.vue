@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import {
+  AssetObjectSummaryDto,
+  CategoryDto,
   CommentDto,
   isFieldVisible,
   TICKET_PRIORITY_LABELS,
@@ -15,7 +17,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import PriorityBadge from '../components/PriorityBadge.vue';
 import StatusBadge from '../components/StatusBadge.vue';
-import { TicketsApi, UsersApi } from '../lib/api';
+import { AssetsApi, CategoriesApi, TicketsApi, UsersApi } from '../lib/api';
 import { useAuthStore } from '../stores/auth';
 
 const route = useRoute();
@@ -24,6 +26,22 @@ const ticketId = route.params.id as string;
 
 const ticket = ref<TicketDetailDto | null>(null);
 const users = ref<UserRefDto[]>([]);
+const categories = ref<CategoryDto[]>([]);
+const objects = ref<AssetObjectSummaryDto[]>([]);
+
+/** Devices compatible with the ticket's current category. */
+const objectChoices = computed(() => {
+  const t = ticket.value;
+  if (!t) return [];
+  const cat = categories.value.find((c) => c.id === t.categoryId);
+  return objects.value.filter(
+    (o) =>
+      o.id === t.objectId ||
+      !cat ||
+      cat.objectFamilies.length === 0 ||
+      cat.objectFamilies.includes(o.familyId),
+  );
+});
 const error = ref('');
 const commentBody = ref('');
 const commentInternal = ref(false);
@@ -43,8 +61,12 @@ async function load(): Promise<void> {
 
 onMounted(async () => {
   await load();
-  if (ticket.value?.canManage && isManagerViewer.value) {
-    users.value = await UsersApi.list().catch(() => []);
+  if (ticket.value?.canManage) {
+    if (isManagerViewer.value) users.value = await UsersApi.list().catch(() => []);
+    [categories.value, objects.value] = await Promise.all([
+      CategoriesApi.list().catch(() => []),
+      AssetsApi.objects().catch(() => []),
+    ]);
   }
   socket = io({ path: '/socket.io' });
   socket.emit('ticket:join', ticketId);
@@ -80,12 +102,22 @@ function onAssign(event: Event): void {
   void run(() => TicketsApi.assign(ticketId, value || null));
 }
 
-function takeTicket(): void {
-  if (auth.me) void run(() => TicketsApi.assign(ticketId, auth.me!.id));
+function onCategory(event: Event): void {
+  const select = event.target as HTMLSelectElement;
+  const value = select.value;
+  void run(() => TicketsApi.setCategory(ticketId, value)).then(() => {
+    // A rejected change (e.g. incompatible device) must snap the select back.
+    if (ticket.value) select.value = ticket.value.categoryId;
+  });
 }
 
-function cancelTicket(): void {
-  void run(() => TicketsApi.setStatus(ticketId, TicketStatus.Cancelled));
+function onObject(event: Event): void {
+  const value = (event.target as HTMLSelectElement).value;
+  void run(() => TicketsApi.setObject(ticketId, value || null));
+}
+
+function takeTicket(): void {
+  if (auth.me) void run(() => TicketsApi.assign(ticketId, auth.me!.id));
 }
 
 async function sendComment(): Promise<void> {
@@ -166,6 +198,12 @@ function eventText(e: TicketEventDto): string {
       return `attached ${p.filename}`;
     case 'escalated':
       return `escalated to managers (unassigned for ${p.hours}h)`;
+    case 'category_changed':
+      return `moved the ticket: ${p.from} → ${p.to}`;
+    case 'object_changed':
+      return p.to
+        ? `changed the device: ${p.from ?? '—'} → ${p.to}`
+        : `detached the device ${p.from ?? ''}`;
     default:
       return e.type;
   }
@@ -228,44 +266,53 @@ function formatValue(value: unknown): string {
       </div>
     </div>
 
-    <div v-if="ticket.canManage || ticket.canCancel" class="card controls">
-      <template v-if="ticket.canManage">
-        <div class="control">
-          <label class="mini">Status</label>
-          <select :value="ticket.status" @change="onStatus">
-            <option v-for="(l, value) in TICKET_STATUS_LABELS" :key="value" :value="value">
-              {{ l }}
-            </option>
-          </select>
-        </div>
-        <div class="control">
-          <label class="mini">Priority</label>
-          <select :value="ticket.priority" @change="onPriority">
-            <option v-for="(l, value) in TICKET_PRIORITY_LABELS" :key="value" :value="value">
-              {{ l }}
-            </option>
-          </select>
-        </div>
-        <div class="control">
-          <label class="mini">Assignee</label>
-          <select v-if="isManagerViewer" :value="ticket.assignee?.id ?? ''" @change="onAssign">
-            <option value="">Unassigned</option>
-            <option v-for="u in users" :key="u.id" :value="u.id">{{ u.displayName }}</option>
-          </select>
-          <button
-            v-else-if="ticket.assignee?.id !== auth.me?.id"
-            class="btn"
-            type="button"
-            @click="takeTicket"
-          >
-            Take ticket
-          </button>
-          <span v-else class="muted assigned-self">Assigned to you</span>
-        </div>
-      </template>
-      <div v-if="ticket.canCancel && !ticket.canManage" class="control">
-        <label class="mini">&nbsp;</label>
-        <button class="btn" type="button" @click="cancelTicket">Cancel ticket</button>
+    <div v-if="ticket.canManage" class="card controls">
+      <div class="control">
+        <label class="mini">Status</label>
+        <select :value="ticket.status" @change="onStatus">
+          <option v-for="(l, value) in TICKET_STATUS_LABELS" :key="value" :value="value">
+            {{ l }}
+          </option>
+        </select>
+      </div>
+      <div class="control">
+        <label class="mini">Priority</label>
+        <select :value="ticket.priority" @change="onPriority">
+          <option v-for="(l, value) in TICKET_PRIORITY_LABELS" :key="value" :value="value">
+            {{ l }}
+          </option>
+        </select>
+      </div>
+      <div class="control">
+        <label class="mini">Assignee</label>
+        <select v-if="isManagerViewer" :value="ticket.assignee?.id ?? ''" @change="onAssign">
+          <option value="">Unassigned</option>
+          <option v-for="u in users" :key="u.id" :value="u.id">{{ u.displayName }}</option>
+        </select>
+        <button
+          v-else-if="ticket.assignee?.id !== auth.me?.id"
+          class="btn"
+          type="button"
+          @click="takeTicket"
+        >
+          Take ticket
+        </button>
+        <span v-else class="muted assigned-self">Assigned to you</span>
+      </div>
+      <div v-if="categories.length > 0" class="control">
+        <label class="mini">Category</label>
+        <select :value="ticket.categoryId" @change="onCategory">
+          <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
+        </select>
+      </div>
+      <div v-if="objects.length > 0" class="control">
+        <label class="mini">Object / device</label>
+        <select :value="ticket.objectId ?? ''" @change="onObject">
+          <option value="">—</option>
+          <option v-for="o in objectChoices" :key="o.id" :value="o.id">
+            {{ o.name }}{{ o.serialNo ? ` (${o.serialNo})` : '' }}
+          </option>
+        </select>
       </div>
     </div>
 

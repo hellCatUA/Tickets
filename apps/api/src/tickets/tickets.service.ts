@@ -385,9 +385,6 @@ export class TicketsService {
       canManage: staff,
       canComment: true,
       canInternal: staff,
-      canCancel:
-        ticket.requesterId === me.id &&
-        ![TicketStatus.Closed, TicketStatus.Cancelled].includes(ticket.status),
     };
   }
 
@@ -396,10 +393,9 @@ export class TicketsService {
       throw new BadRequestException('Unknown status');
     }
     const ticket = await this.assertCanView(me, id);
-    const staff = await this.isStaffFor(me, ticket);
-    const requesterCancel =
-      ticket.requesterId === me.id && status === TicketStatus.Cancelled && !staff;
-    if (!staff && !requesterCancel) throw new ForbiddenException('Not allowed to change status');
+    if (!(await this.isStaffFor(me, ticket))) {
+      throw new ForbiddenException('Not allowed to change status');
+    }
     if (ticket.status === status) return this.getDetail(me, id);
 
     const from = ticket.status;
@@ -459,6 +455,72 @@ export class TicketsService {
     ticket.priority = priority;
     await this.tickets.save(ticket);
     await this.addEvent(ticket.id, 'priority_changed', me.id, { from, to: priority });
+    return this.getDetail(me, id);
+  }
+
+  /** Staff can move a ticket to another category (e.g. after triage). */
+  async changeCategory(me: MeDto, id: string, categoryId: string): Promise<TicketDetailDto> {
+    const ticket = await this.assertCanView(me, id);
+    if (!(await this.isStaffFor(me, ticket))) {
+      throw new ForbiddenException('Not allowed to change the category');
+    }
+    if (ticket.categoryId === categoryId) return this.getDetail(me, id);
+    const { category, schema } = await this.categories.getCategoryWithSchema(categoryId);
+    if (!category.active) throw new BadRequestException('Category is not active');
+    if (category.objectRequired && !ticket.objectId) {
+      throw new BadRequestException('That category requires an object — attach a device first');
+    }
+    if (ticket.objectId && category.objectFamilies.length > 0) {
+      const object = await this.objects.findOne({ where: { id: ticket.objectId } });
+      if (object && !category.objectFamilies.includes(object.familyId)) {
+        throw new BadRequestException(
+          'That category does not apply to the attached device — change the device first',
+        );
+      }
+    }
+    const previous = await this.categories.getCategoryWithSchema(ticket.categoryId);
+    const fromName = previous.category.name;
+    ticket.categoryId = category.id;
+    // Adopt the new category's current form; matching keys keep their values.
+    ticket.formSchemaId = schema.id;
+    await this.tickets.save(ticket);
+    await this.addEvent(id, 'category_changed', me.id, { from: fromName, to: category.name });
+    return this.getDetail(me, id);
+  }
+
+  /** Staff can attach, replace or detach the device on a ticket. */
+  async changeObject(me: MeDto, id: string, objectId: string | null): Promise<TicketDetailDto> {
+    const ticket = await this.assertCanView(me, id);
+    if (!(await this.isStaffFor(me, ticket))) {
+      throw new ForbiddenException('Not allowed to change the object');
+    }
+    if (ticket.objectId === objectId) return this.getDetail(me, id);
+    const { category } = await this.categories.getCategoryWithSchema(ticket.categoryId);
+    const previous = ticket.objectId
+      ? await this.objects.findOne({ where: { id: ticket.objectId } })
+      : null;
+    let toName: string | null = null;
+    if (objectId) {
+      const object = await this.objects.findOne({ where: { id: objectId, active: true } });
+      if (!object) throw new BadRequestException('Unknown object');
+      if (
+        category.objectFamilies.length > 0 &&
+        !category.objectFamilies.includes(object.familyId)
+      ) {
+        throw new BadRequestException("The ticket's category does not apply to that device type");
+      }
+      toName = object.name;
+      ticket.objectId = objectId;
+      // The device's own location is authoritative when it has one.
+      if (object.locationId) ticket.locationId = object.locationId;
+    } else {
+      if (category.objectRequired) {
+        throw new BadRequestException("The ticket's category requires an object");
+      }
+      ticket.objectId = null;
+    }
+    await this.tickets.save(ticket);
+    await this.addEvent(id, 'object_changed', me.id, { from: previous?.name ?? null, to: toName });
     return this.getDetail(me, id);
   }
 

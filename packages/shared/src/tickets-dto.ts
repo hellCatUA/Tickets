@@ -182,5 +182,4 @@ export interface TicketDetailDto extends TicketSummaryDto {
   canManage: boolean;
   canComment: boolean;
   canInternal: boolean;
-  canCancel: boolean;
 }

@@ -96,6 +96,9 @@ independently of the four base roles:
   → Resolved → Closed`, plus `Cancelled`. Status names/colors configurable by Admin.
 - Priorities: Low / Normal / High / Critical (configurable).
 - Assignment: to an agent or an agent group; manual by Manager or automatic by rule.
+- Staff can re-assign the **category** and the **object/device** of an existing
+  ticket (validated against the category↔family link); both changes land on the
+  timeline. Requesters cannot cancel tickets — closing is staff-only.
 - Comments: public (visible to requester) and **internal notes** (staff only).
 - Attachments on tickets and comments (images, PDFs, docs) stored on a local volume.
 - Ticket templates for recurring request types.
