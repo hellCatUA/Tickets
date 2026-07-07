@@ -12,3 +12,8 @@ useUiStore().init();
 
 app.use(router);
 app.mount('#app');
+
+// Web Push service worker (no-op where unsupported).
+if ('serviceWorker' in navigator) {
+  void navigator.serviceWorker.register('/sw.js').catch(() => undefined);
+}

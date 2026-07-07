@@ -8,6 +8,8 @@ import { Notification } from '../entities/notification.entity';
 import { RoleMapping } from '../entities/role-mapping.entity';
 import { User } from '../entities/user.entity';
 import { TicketsGateway } from '../tickets/tickets.gateway';
+import { EmailService } from './email.service';
+import { PushService } from './push.service';
 
 export interface NotificationInput {
   type: string;
@@ -24,6 +26,8 @@ export class NotificationsService {
     @InjectRepository(User) private readonly users: Repository<User>,
     private readonly config: ConfigService,
     @Inject(forwardRef(() => TicketsGateway)) private readonly gateway: TicketsGateway,
+    private readonly push: PushService,
+    private readonly email: EmailService,
   ) {}
 
   async createForUsers(userIds: string[], input: NotificationInput): Promise<void> {
@@ -41,6 +45,9 @@ export class NotificationsService {
       ),
     );
     this.gateway.emitNotification(unique);
+    // Out-of-app channels are fire-and-forget and respect user preferences.
+    void this.push.sendToUsers(unique, input).catch(() => undefined);
+    void this.email.sendToUsers(unique, input).catch(() => undefined);
   }
 
   /** Users who hold the Manager (or Admin) role via group mappings or the bootstrap group. */

@@ -155,6 +155,17 @@ client_max_body_size 25m;
 3. In Nextcloud, open the **Tickets** entry in the app menu — the platform
    should render inside Nextcloud in compact (embedded) mode.
 
+## Notifications
+
+- **In-app bell** and live updates need no configuration.
+- **Web Push** works out of the box — VAPID keys are generated on first start
+  and stored in the database. Each user enables push per device under
+  *user menu → Notification settings* (browser permission prompt). On
+  iPhone/iPad the app must be added to the Home Screen first (iOS 16.4+).
+- **Email** stays dormant until `SMTP_URL` (and optionally `EMAIL_FROM`) are
+  set in `.env` — after a restart the Email column appears in everyone's
+  notification settings.
+
 ## Verification checklist
 
 - [ ] `curl http://127.0.0.1:4090/healthz` → `{"status":"ok","db":true}`

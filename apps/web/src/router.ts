@@ -24,6 +24,11 @@ export const router = createRouter({
       meta: { role: Role.Admin },
     },
     {
+      path: '/settings/notifications',
+      name: 'notification-settings',
+      component: () => import('./pages/NotificationSettingsPage.vue'),
+    },
+    {
       path: '/admin/access',
       name: 'admin-access',
       component: () => import('./pages/AdminAccessPage.vue'),

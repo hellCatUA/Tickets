@@ -11,6 +11,7 @@ import type {
   FormField,
   GroupDto,
   NotificationListDto,
+  NotificationPrefsDto,
   PermissionGrantDto,
   RoleMappingDto,
   SyncResultDto,
@@ -126,5 +127,29 @@ export const NotificationsApi = {
     api<{ unreadCount: number }>('/api/notifications/read', {
       method: 'POST',
       body: JSON.stringify(ids ? { ids } : {}),
+    }),
+};
+
+export const PushApi = {
+  key: () => api<{ key: string }>('/api/push/key'),
+  status: () => api<{ subscribed: boolean }>('/api/push/status'),
+  subscribe: (subscription: unknown) =>
+    api<{ ok: true }>('/api/push/subscribe', {
+      method: 'POST',
+      body: JSON.stringify(subscription),
+    }),
+  unsubscribe: (endpoint: string) =>
+    api<{ ok: true }>('/api/push/unsubscribe', {
+      method: 'POST',
+      body: JSON.stringify({ endpoint }),
+    }),
+};
+
+export const PreferencesApi = {
+  get: () => api<NotificationPrefsDto>('/api/notification-preferences'),
+  put: (prefs: NotificationPrefsDto['prefs']) =>
+    api<NotificationPrefsDto>('/api/notification-preferences', {
+      method: 'PUT',
+      body: JSON.stringify({ prefs }),
     }),
 };

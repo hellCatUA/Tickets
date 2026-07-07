@@ -144,6 +144,16 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick));
             <span>Theme</span>
             <span class="dropdown-value">{{ themeLabel }}</span>
           </button>
+          <button
+            class="dropdown-item"
+            type="button"
+            @click="
+              menuOpen = false;
+              router.push('/settings/notifications');
+            "
+          >
+            Notification settings
+          </button>
           <button class="dropdown-item danger" type="button" @click="auth.logout()">
             Sign out
           </button>

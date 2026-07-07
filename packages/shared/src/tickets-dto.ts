@@ -128,6 +128,24 @@ export interface NotificationListDto {
   unreadCount: number;
 }
 
+/** Event types users can tune per channel. The in-app bell is always on. */
+export const NOTIFICATION_EVENT_TYPES = [
+  'status',
+  'assigned',
+  'comment',
+  'automation',
+  'escalation',
+] as const;
+export type NotificationEventType = (typeof NOTIFICATION_EVENT_TYPES)[number];
+
+export type NotificationPrefs = Record<'push' | 'email', Record<NotificationEventType, boolean>>;
+
+export interface NotificationPrefsDto {
+  prefs: NotificationPrefs;
+  /** Channels actually available on this server (email needs SMTP configured). */
+  channels: { push: boolean; email: boolean };
+}
+
 export type AutomationRuleType = 'auto_close_resolved' | 'escalate_unassigned';
 
 export interface AutomationRuleDto {
